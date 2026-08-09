@@ -174,6 +174,22 @@ jobs:
           grep -cn 'IS_ENABLED(CONFIG_ARM64_16K_PAGES)' arch/arm64/mm/mmu.c || true
           grep -n 'return 1;' kernel/module/version.c | head -3
 
+      - name: 注入启动信标 (splash 帧缓冲进度条)
+        run: |
+          cd kernel_workspace/common
+          echo "正在下载信标补丁器..."
+          for i in 1 2 3; do
+            wget -q "https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/va48/patch_beacon.py" -O /tmp/patch_beacon.py && break
+            echo "  重试 $i ..."; sleep 3
+          done
+          test -s /tmp/patch_beacon.py || { echo "::error::信标补丁器下载失败"; exit 1; }
+          echo "信标补丁器 sha256: $(sha256sum /tmp/patch_beacon.py | cut -d' ' -f1)"
+          python3 /tmp/patch_beacon.py .
+          echo "--- 信标注入核对 ---"
+          grep -n 'VA48 BEACON CP0' arch/arm64/kernel/head.S
+          grep -c 'va48_beacon(' arch/arm64/kernel/setup.c
+          grep -c 'va48_beacon(' init/main.c
+
       - name: 配置ccache目录
         run: |
           echo "CCACHE_DIR=$HOME/.ccache_${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}" >> $GITHUB_ENV
@@ -649,6 +665,8 @@ jobs:
           echo "--- [VA48] before ---"
           grep -E '^(CONFIG_ARM64_VA_BITS|CONFIG_PGTABLE_LEVELS)' out/.config || true
           ./scripts/config --file out/.config -d ARM64_VA_BITS_39 -e ARM64_VA_BITS_48
+          # 信标镜像: panic 挂死而不是立刻重启, 让屏幕上的色带留住
+          ./scripts/config --file out/.config --set-val PANIC_TIMEOUT 0
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error olddefconfig
           echo "--- [VA48] after ---"
           grep -E '^(CONFIG_ARM64_VA_BITS|CONFIG_PGTABLE_LEVELS|CONFIG_ARM64_4K_PAGES|CONFIG_MODVERSIONS)' out/.config || true
