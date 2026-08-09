@@ -155,27 +155,49 @@ SETUP_FN_NEW = """/*
  * memblock.memory and is covered by the linear map; phys_to_virt() is
  * therefore valid for it once paging_init() has run. Before that we go
  * through early_ioremap.
+ *
+ * There are deliberately TWO functions rather than one with a runtime flag.
+ * early_ioremap()/early_iounmap() live in .init.text, so a single non-init
+ * function referencing them is a section mismatch -- and this kernel builds
+ * section mismatches as hard ERRORS, not warnings. Splitting removes the bad
+ * reference instead of suppressing the diagnostic with __ref:
+ *
+ *   va48_beacon_early()  __init, early_ioremap  -- CP1..CP2, called from
+ *                        setup_arch() which is itself __init (legal)
+ *   va48_beacon()        non-init, linear map   -- CP3..CP11, must NOT be
+ *                        __init because CP11 runs after free_initmem()
  */
-bool va48_beacon_linear __read_mostly;
+static void va48_beacon_paint(void *va, size_t len)
+{
+	memset(va, 0xff, len);
+	dcache_clean_inval_poc((unsigned long)va, (unsigned long)va + len);
+}
 
+static phys_addr_t va48_beacon_pa(int cp)
+{
+	return (phys_addr_t)VA48_SPLASH_BASE + (phys_addr_t)cp * 0x40000ULL;
+}
+
+/* CP1..CP2: before paging_init(), the linear map is not usable yet. */
+void __init va48_beacon_early(int cp)
+{
+	phys_addr_t pa = va48_beacon_pa(cp);
+	size_t len = 0x10000;
+	void __iomem *io = early_ioremap(pa, len);
+
+	if (!io)
+		return;
+	memset_io(io, 0xff, len);
+	early_iounmap(io, len);
+}
+
+/*
+ * CP3..CP11: linear map is live. Not __init -- CP11 executes after
+ * free_initmem(), so marking this __init would be a use-after-free.
+ */
 void va48_beacon(int cp)
 {
-	phys_addr_t pa = (phys_addr_t)VA48_SPLASH_BASE + (phys_addr_t)cp * 0x40000ULL;
-	size_t len = 0x10000;
-
-	if (va48_beacon_linear) {
-		void *va = (void *)phys_to_virt(pa);
-
-		memset(va, 0xff, len);
-		dcache_clean_inval_poc((unsigned long)va, (unsigned long)va + len);
-	} else {
-		void __iomem *io = early_ioremap(pa, len);
-
-		if (!io)
-			return;
-		memset_io(io, 0xff, len);
-		early_iounmap(io, len);
-	}
+	va48_beacon_paint((void *)phys_to_virt(va48_beacon_pa(cp)), 0x10000);
 }
 
 void __init __no_sanitize_address setup_arch(char **cmdline_p)
@@ -197,13 +219,15 @@ patch("arch/arm64/kernel/setup.c", [
     # CP1 -- early fixmap / early ioremap are up (proves patch E1)
     ("CP1 after early_ioremap_init",
      "\tearly_fixmap_init();\n\tearly_ioremap_init();\n",
-     "\tearly_fixmap_init();\n\tearly_ioremap_init();\n\tva48_beacon(1);\n"),
+     "\tearly_fixmap_init();\n\tearly_ioremap_init();\n\tva48_beacon_early(1);\n"),
 
-    # CP2 before paging_init (proves B1), CP3 after it (proves C1/D1/F1/I1)
+    # CP2 before paging_init (proves B1), CP3 after it (proves C1/D1/F1/I1).
+    # CP2 still needs the early_ioremap variant; from CP3 on the linear map is
+    # live so the plain variant is used.
     ("CP2+CP3 around paging_init",
      "\tarm64_memblock_init();\n\n\tpaging_init();\n",
-     "\tarm64_memblock_init();\n\tva48_beacon(2);\n\n\tpaging_init();\n"
-     "\tva48_beacon_linear = true;\n\tva48_beacon(3);\n"),
+     "\tarm64_memblock_init();\n\tva48_beacon_early(2);\n\n\tpaging_init();\n"
+     "\tva48_beacon(3);\n"),
 
     # CP4 after bootmem_init (vmemmap is populated by now)
     ("CP4 after bootmem_init",
