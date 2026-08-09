@@ -176,19 +176,34 @@ jobs:
 
       - name: 注入启动信标 (splash 帧缓冲进度条)
         run: |
+          set -o pipefail
           cd kernel_workspace/common
+          PB_SHA=dfed357e143d15566636a28120176739921ce05900fd96b92e62df51afb1d42b
+          PB_LEN=16382
           echo "正在下载信标补丁器..."
           for i in 1 2 3; do
             wget -q "https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/va48/patch_beacon.py" -O /tmp/patch_beacon.py && break
             echo "  重试 $i ..."; sleep 3
           done
           test -s /tmp/patch_beacon.py || { echo "::error::信标补丁器下载失败"; exit 1; }
-          echo "信标补丁器 sha256: $(sha256sum /tmp/patch_beacon.py | cut -d' ' -f1)"
-          python3 /tmp/patch_beacon.py .
+          got_sha=$(sha256sum /tmp/patch_beacon.py | cut -d' ' -f1)
+          got_len=$(stat -c %s /tmp/patch_beacon.py)
+          echo "信标补丁器 sha256: $got_sha ($got_len 字节)"
+          if [ "$got_sha" != "$PB_SHA" ] || [ "$got_len" != "$PB_LEN" ]; then
+            echo "::error::信标补丁器指纹不符, 期望 $PB_SHA / $PB_LEN 字节"
+            exit 1
+          fi
+          python3 /tmp/patch_beacon.py . 2>&1 | tee /tmp/beacon.log
+          grep -q 'applied=18 expected=18 failed=0' /tmp/beacon.log || { echo "::error::信标补丁数不符, 需要 18/18"; exit 1; }
           echo "--- 信标注入核对 ---"
           grep -n 'VA48 BEACON CP0' arch/arm64/kernel/head.S
-          grep -c 'va48_beacon(' arch/arm64/kernel/setup.c
-          grep -c 'va48_beacon(' init/main.c
+          echo "setup.c  va48_beacon 出现次数: $(grep -c va48_beacon arch/arm64/kernel/setup.c)"
+          echo "main.c   va48_beacon 出现次数: $(grep -c va48_beacon init/main.c)"
+          echo "panic.c  va48_beacon 出现次数: $(grep -c va48_beacon kernel/panic.c)"
+          grep -q 'va48_beacon_panic' kernel/panic.c || { echo "::error::panic.c 未注入 panic 标记"; exit 1; }
+          grep -q 'void va48_beacon_panic(void)' arch/arm64/kernel/setup.c || { echo "::error::setup.c 缺少 va48_beacon_panic 定义"; exit 1; }
+          awk '/va48_beacon[a-z_]*\(.*\)$/ && !/;/ { fn=$0; init=($0 ~ /__init/) } /early_io(remap|unmap)/ { if (fn != "" && !init) { print "::error::非 __init 函数引用 .init.text: " fn; bad=1 } } /^}/ { fn=""; init=0 } END { exit bad?1:0 }' arch/arm64/kernel/setup.c || exit 1
+          echo "节区安全检查通过: 无非 __init 函数引用 early_ioremap"
 
       - name: 配置ccache目录
         run: |
