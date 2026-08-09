@@ -178,7 +178,7 @@ jobs:
         run: |
           set -o pipefail
           cd kernel_workspace/common
-          PB_SHA=dfed357e143d15566636a28120176739921ce05900fd96b92e62df51afb1d42b
+          PB_SHA=d0a4975f36d00774c99ed198d0f326ceb3b85906e02d0a152db0ab8e109402d7
           PB_LEN=16382
           echo "正在下载信标补丁器..."
           for i in 1 2 3; do
