@@ -34,8 +34,16 @@ is valid for it once paging_init() has run.
 
 BAND LAYOUT (offsets from 0xd5100000)
 -------------------------------------
-    CP0  +0x000000  1 MiB   (big, so "mechanism works" is unmistakable)
-    CPi  +i*0x100000  64 KiB for i = 1..11
+    CP0  +0x000000    160 KiB  (thicker, so "mechanism works" is unmistakable)
+    CPi  +i*0x40000    64 KiB   for i = 1..11
+
+    Stride is 256 KiB, not 1 MiB, so all twelve bands live inside the first
+    2.8 MiB of the region. The bootloader's scanout geometry is not discoverable
+    from DT or /proc (the XBL log's 1080x1920 is the logo asset, not the
+    stride), so a 1 MiB stride would put CP8..CP11 past the end of a
+    1080x1920x4 (7.9 MiB) framebuffer and make them silently invisible -
+    which would read as "kernel died at CP7" when it actually reached CP11.
+    2.8 MiB is inside every plausible framebuffer, panel-sized or FHD.
 
 MAPPING METHOD PER PHASE
 ------------------------
@@ -107,19 +115,20 @@ def patch(relpath, edits):
 HEAD_OLD = "SYM_CODE_START(primary_entry)\n\tbl\tpreserve_boot_args\n"
 HEAD_NEW = """SYM_CODE_START(primary_entry)
 	/*
-	 * VA48 BEACON CP0: paint a 512 KiB white band at the start of the
+	 * VA48 BEACON CP0: paint a 160 KiB white band at the start of the
 	 * continuous-splash framebuffer. MMU and caches are still off, so this
 	 * store lands in DRAM directly and the DPU (still scanning out the
 	 * bootloader splash) shows it right away. This is the only diagnostic
 	 * channel that works this early on this device.
 	 *
-	 * 512 KiB (not 1 MiB) so that a gap remains before the CP1 band at
-	 * +1 MiB and the two do not merge into one indistinguishable block.
+	 * 160 KiB (not the full 256 KiB stride) so that a gap remains before the
+	 * CP1 band at +256 KiB and the two do not merge into one block. CP0 is
+	 * deliberately thicker than the rest so it is unmistakable.
 	 *
 	 * x0-x3 hold the boot arguments - only x4-x6 are used here.
 	 */
 	mov_q	x4, %s
-	add	x6, x4, #0x80000
+	add	x6, x4, #0x28000
 	mov	x5, #-1
 0:	stp	x5, x5, [x4], #16
 	cmp	x4, x6
@@ -151,7 +160,7 @@ bool va48_beacon_linear __read_mostly;
 
 void va48_beacon(int cp)
 {
-	phys_addr_t pa = (phys_addr_t)VA48_SPLASH_BASE + (phys_addr_t)cp * 0x100000ULL;
+	phys_addr_t pa = (phys_addr_t)VA48_SPLASH_BASE + (phys_addr_t)cp * 0x40000ULL;
 	size_t len = 0x10000;
 
 	if (va48_beacon_linear) {
@@ -261,6 +270,6 @@ if failed or len(applied) != EXPECT:
     sys.exit(1)
 
 print("beacon OK: CP0 raw-phys, CP1-2 early_ioremap, CP3-11 linear map")
-print("splash framebuffer base %s; CP0 = +0 (512 KiB), CPi = +i*1MiB (64 KiB)"
+print("splash framebuffer base %s; CP0 = +0 (160 KiB), CPi = +i*256KiB (64 KiB)"
       % SPLASH_BASE_C)
 sys.exit(0)
