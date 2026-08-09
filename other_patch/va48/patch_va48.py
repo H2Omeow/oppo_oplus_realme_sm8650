@@ -50,6 +50,58 @@ PATCH SITES
                 starts the walk at level 1, but idmap_pg_dir is a level-0 table
                 (IDMAP_PGD_ORDER = PHYS_MASK_SHIFT-PGDIR_SHIFT = 9).  Fatal.
                 Use VA_BITS (48) -> t0sz=16 -> level-0 start.  Matches stock.
+  H assembler.h: idmap_get_t0sz asm macro -- THE SAME BUG AS F, IN ASM, AND IT
+                RUNS FIRST.  This is what killed attempt #2 (multi-minute hang
+                at the first splash, no auto-reboot, nothing on console).
+                proc.S:__cpu_setup does:
+                    mov_q tcr, TCR_TxSZ(VA_BITS) | ...   ; T0SZ=16, correct
+                    idmap_get_t0sz x9                    ; recomputes -> 25
+                    tcr_set_t0sz  tcr, x9                ; OVERWRITES with 25
+                and __cpu_setup runs BEFORE the MMU is enabled.  So the CPU is
+                told TTBR0 has a 39-bit input and begins the walk at level 1,
+                while init_idmap_pg_dir is a level-0 table.  The very first
+                instruction fetch after MMU enable has no valid translation;
+                the exception vectors are equally unmapped, so it faults on the
+                fault forever.  No console, no panic (panic=-1 would have
+                rebooted), no watchdog pet -> exactly the observed dead hang.
+                Patch F alone is NOT enough: F only fixes the C copy used later
+                by cpu_replace_ttbr1().  Both copies must agree.
+  I mm/mmu.c  : arch_get_mappable_range() uses __pa(_PAGE_OFFSET(vabits_actual)).
+                With vabits_actual=48 that is 0xffff000000000000, which is NOT
+                in the pinned linear map, so __pa() returns garbage.  Not fatal
+                at boot (only memory-hotplug / memremap_pages call it, and
+                CONFIG_MEMORY_HOTPLUG=y on this device) but it is wrong.
+                Use PAGE_OFFSET, same reasoning as B.
+
+NOT A BUG (checked, left alone)
+  * vabits_actual: memory.h:199 defines it as ((u64)VA_BITS) whenever
+    VA_BITS <= 48, and mmu.c's runtime variable is inside #if VA_BITS > 48.
+    So it is a compile-time 48 here and TASK_SIZE_64 really is 256 TiB.
+  * kvm_compute_layout() does run (kernel is at EL1 so !is_kernel_in_hyp_mode()),
+    and its hyp VA math is nonsense with vabits_actual=48 vs a VA39 kernel --
+    but it only computes and stores values, never dereferences them, and KVM
+    cannot initialise on this device anyway (EL2 belongs to the Qualcomm
+    hypervisor).  Broken KVM guests are accepted collateral, not a boot blocker.
+  * kaslr_early.c's VA_BITS_MIN uses are wanted: they keep the KASLR offset
+    inside the VA39 vmalloc region, which is what pinning the layout needs.
+  H asm/assembler.h : idmap_get_t0sz macro -- THE ROUND-1 BOOT KILLER.
+                This is the ASM twin of site F and runs FIRST, from __cpu_setup
+                (proc.S:442), before the MMU is enabled.  proc.S sets
+                TCR_TxSZ(VA_BITS) -> T0SZ=16, then idmap_get_t0sz OVERWRITES
+                T0SZ with a value derived from VA_BITS_MIN.  Pinned to 39 that
+                is 25 -> 39-bit TTBR0 input -> the CPU begins the walk at level
+                1 while init_idmap_pg_dir is a level-0 table -> the very first
+                instruction fetch after MMU enable has no valid mapping, and
+                the exception vectors are unmapped too, so it is a
+                fault-on-fault hard hang: no console, no panic, no watchdog
+                reboot.  Observed as "stuck on first splash for minutes".
+                Patching F alone is NOT enough; F runs much later in
+                paging_init().  Use VA_BITS -> t0sz 16, agreeing with proc.S.
+  I mm/mmu.c  : arch_get_mappable_range() uses _PAGE_OFFSET(vabits_actual),
+                which with vabits_actual=48 is 0xffff000000000000 -- an address
+                outside the pinned linear map, so __pa() on it yields garbage.
+                Not fatal at boot (memory hotplug only) but CONFIG_MEMORY_HOTPLUG
+                =y on this device, so fix it rather than leave a live landmine.
   G kernel/module/version.c : check_version() -> early return 1.
                 MEASURED: flipping to 4 levels changes the CRC of module_layout
                 (0xea759d7f -> 0x248147a7), _dev_err, kmalloc_caches, ... while
@@ -193,6 +245,49 @@ patch("arch/arm64/mm/mmu.c", [
     ),
 ])
 
+# ---------------------------------------------------------------- H: assembler.h
+# THE ROUND-2 FIX.  This is the asm twin of patch F and it runs FIRST, in
+# __cpu_setup, before the MMU is ever enabled.  Missing it is why round 1 hung.
+patch("arch/arm64/include/asm/assembler.h", [
+    (
+        "H1 idmap_get_t0sz asm uses VA_BITS not VA_BITS_MIN",
+        "\t.macro\tidmap_get_t0sz, reg\n"
+        "\tadrp\t\\reg, _end\n"
+        "\torr\t\\reg, \\reg, #(1 << VA_BITS_MIN) - 1\n"
+        "\tclz\t\\reg, \\reg\n",
+        "\t/*\n"
+        "\t * VA48/VA39: asm twin of the idmap_t0sz computation in mmu.c.\n"
+        "\t * proc.S:__cpu_setup loads TCR_TxSZ(VA_BITS) (T0SZ=16) and then\n"
+        "\t * OVERWRITES T0SZ with this macro's result, before the MMU is\n"
+        "\t * enabled.  With the pinned VA_BITS_MIN=39 it yields t0sz=25, i.e.\n"
+        "\t * a 39-bit TTBR0 input, so the CPU starts the TTBR0 walk at level 1\n"
+        "\t * while init_idmap_pg_dir is a level-0 table (IDMAP_PGD_ORDER =\n"
+        "\t * PHYS_MASK_SHIFT - PGDIR_SHIFT = 9).  The very first instruction\n"
+        "\t * fetch after MMU enable then translates through garbage, and the\n"
+        "\t * fault vectors are unmapped too -> silent hard hang, no console,\n"
+        "\t * no panic, no watchdog.  Must use VA_BITS -> t0sz=16.\n"
+        "\t */\n"
+        "\t.macro\tidmap_get_t0sz, reg\n"
+        "\tadrp\t\\reg, _end\n"
+        "\torr\t\\reg, \\reg, #(1 << VA_BITS) - 1\n"
+        "\tclz\t\\reg, \\reg\n",
+    ),
+])
+
+# ---------------------------------------------------------------- I: mmu.c hotplug
+patch("arch/arm64/mm/mmu.c", [
+    (
+        "I1 arch_get_mappable_range pins linear map base",
+        "\tu64 start_linear_pa = __pa(_PAGE_OFFSET(vabits_actual));\n",
+        "\t/* VA48/VA39: vabits_actual is 48, but the linear map is pinned at\n"
+        "\t * KERNEL_VA_BITS.  _PAGE_OFFSET(48) is 0xffff000000000000, which is\n"
+        "\t * NOT in the linear map, so __pa() on it returns garbage and\n"
+        "\t * memory hotplug / memremap_pages would compute a bogus range.\n"
+        "\t * Same class of bug as patch B1. */\n"
+        "\tu64 start_linear_pa = __pa(PAGE_OFFSET);\n",
+    ),
+])
+
 # ---------------------------------------------------------------- G: version.c
 patch("kernel/module/version.c", [
     (
@@ -235,10 +330,10 @@ if failed:
     print("A partially patched tree builds fine and then dies before console output.")
     sys.exit(1)
 
-EXPECT = 10
+EXPECT = 12
 if len(applied) != EXPECT:
     print(f"\nERROR: expected {EXPECT} edits, applied {len(applied)}.")
     sys.exit(1)
 
-print("\nall 10 edits applied")
+print(f"\nall {EXPECT} edits applied")
 sys.exit(0)
