@@ -62,19 +62,19 @@ BAND GEOMETRY (offsets from 0xd5100000; panel row stride is 1264*4 = 5056 B)
     BAND      0x18000  ( 96 KiB, ~19 rows)   painted part of a slot
     CP0 BAND  0x20000  (128 KiB, ~26 rows)   thicker anchor
     slot(cp) = cp + cp/4                     the /4 term inserts group gaps
-    PANIC     slot 25, 0x50000 (320 KiB, ~65 rows)
+    PANIC     slot 27, 0x50000 (320 KiB, ~65 rows)
 
-    Highest band ends at ~3.7 MiB, the panic block at ~4.2 MiB.  Round 5
+    Highest band ends at ~4.0 MiB, the panic block at ~4.6 MiB.  Round 5
     proved at least the first 2.8 MiB is really scanned out; a full
     1264x2780x4 framebuffer is 13.4 MiB and even a 1080x1920x4 one is 7.9 MiB,
-    so 4.2 MiB is inside either.
+    so 4.6 MiB is inside either.
 
 MAPPING METHOD PER PHASE
 ------------------------
     CP0        head.S, MMU + D-cache still OFF -> raw physical store
     CP1..CP2   early_ioremap (valid from early_ioremap_init() until
                early_ioremap_reset(); 96 KiB = 24 pages <= NR_FIX_BTMAPS=64)
-    CP3..CP19  phys_to_virt + dcache_clean_inval_poc (valid once paging_init()
+    CP3..CP20  phys_to_virt + dcache_clean_inval_poc (valid once paging_init()
                has run; splash_region is reserved but not no-map, so it stays
                in memblock.memory and the linear map covers it)
 
@@ -95,9 +95,9 @@ CHECKPOINT -> WHAT ITS BAND PROVES
     CP9   after do_pre_smp_initcalls()
     CP10  after sched_init_smp()             secondary CPUs are up
     CP11  after driver_init()
-    CP12..CP18  after initcall level 0..6    vendor driver probes live here;
+    CP12..CP19  after initcall level 0..7    vendor driver probes live here;
                                              this is where round 5 was blind
-    CP19  about to exec userspace init       kernel side fully OK
+    CP20  about to exec userspace init       kernel side fully OK
 
     PANIC block  panic() entered            distinguishes panic from hang
 """
@@ -212,13 +212,13 @@ SETUP_FN_NEW = """/*
  *
  *   va48_beacon_early()  __init, early_ioremap  -- CP1..CP2, called from
  *                        setup_arch() which is itself __init (legal)
- *   va48_beacon()        non-init, linear map   -- CP3..CP19, must NOT be
- *                        __init because CP19 runs after free_initmem()
+ *   va48_beacon()        non-init, linear map   -- CP3..CP20, must NOT be
+ *                        __init because CP20 runs after free_initmem()
  */
 #define VA48_SPLASH_BASE	%s
 #define VA48_STRIDE		0x28000UL	/* 160 KiB slot pitch  */
 #define VA48_BAND		0x18000UL	/*  96 KiB painted     */
-#define VA48_PANIC_SLOT		25
+#define VA48_PANIC_SLOT		27
 #define VA48_PANIC_BAND		0x50000UL	/* 320 KiB, ~65 rows   */
 
 /* Set once paging_init() has run; guards the panic marker's linear access. */
@@ -254,7 +254,7 @@ void __init va48_beacon_early(int cp)
 }
 
 /*
- * CP3..CP19: linear map is live. Not __init -- CP19 executes after
+ * CP3..CP20: linear map is live. Not __init -- CP20 executes after
  * free_initmem(), so marking this __init would be a use-after-free.
  */
 void va48_beacon(int cp)
@@ -349,7 +349,7 @@ patch("init/main.c", [
      "\tcpuset_init_smp();\n\tdriver_init();\n",
      "\tcpuset_init_smp();\n\tdriver_init();\n\tva48_beacon(11);\n"),
 
-    # CP12..CP18 -- one band per initcall level. This is the subdivision round 5
+    # CP12..CP19 -- one band per initcall level. This is the subdivision round 5
     # lacked: vendor driver probes run here, and a hang inside one of them was
     # indistinguishable from a hang anywhere else in kernel_init_freeable().
     ("CP12-18 per initcall level",
@@ -357,13 +357,13 @@ patch("init/main.c", [
      "\t\tdo_initcall_level(level, command_line);\n\t}\n",
      "\t\tstrcpy(command_line, saved_command_line);\n"
      "\t\tdo_initcall_level(level, command_line);\n"
-     "\t\t/* VA48 BEACON CP12..CP18: band per completed initcall level */\n"
+     "\t\t/* VA48 BEACON CP12..CP19: band per completed initcall level */\n"
      "\t\tva48_beacon(12 + level);\n\t}\n"),
 
     # CP19 -- kernel side is fully done; anything after this is userspace
-    ("CP19 before userspace init",
+    ("CP20 before userspace init",
      "\tif (ramdisk_execute_command) {\n",
-     "\tva48_beacon(19);\n\tif (ramdisk_execute_command) {\n"),
+     "\tva48_beacon(20);\n\tif (ramdisk_execute_command) {\n"),
 ])
 
 # ----------------------------------------------------------------- kernel/panic.c
@@ -398,4 +398,4 @@ if failed or applied != EXPECT:
 print("beacon OK: CP0 raw-phys, CP1-2 early_ioremap, CP3-19 linear map")
 print("splash base %s, stride 160 KiB, band 96 KiB, groups of 4"
       % SPLASH_BASE_C)
-print("CP0 = 128 KiB anchor; panic marker = slot 25, 320 KiB")
+print("CP0 = 128 KiB anchor; panic marker = slot 27, 320 KiB")
