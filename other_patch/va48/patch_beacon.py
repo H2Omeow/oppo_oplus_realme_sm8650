@@ -1,7 +1,70 @@
 #!/usr/bin/env python3
 """
-VA48 BEACON PATCHER  (round 6)
+VA48 BEACON PATCHER  (round 7)
 ==============================
+
+ROUND 6 RESULT (confirmed on real hardware)
+-------------------------------------------
+All 21 bands lit -- "five groups plus one thin band" -- and the thin band was
+NOT the thick panic block, and the device hung before the watchdog reset it.
+That is a much stronger result than any previous round:
+
+  * CP20 sits in kernel_init() AFTER free_initmem(), mark_readonly(),
+    pti_finalize() and system_state = SYSTEM_RUNNING, immediately before
+    run_init_process("/init").  So the whole kernel-side VA48 decoupling works:
+    4-level pagetables, secondary CPUs, all eight initcall levels, every vendor
+    module probe, prepare_namespace() (root mount), and the initmem
+    reclaim/read-only transition.
+  * The panic block was ARMED at that point (va48_beacon_linear is set to true
+    on the line before va48_beacon(3), and CP3 was seen), so its absence really
+    means panic() was never reached.  Combined with PANIC_TIMEOUT=0 -- which
+    makes a real panic hang forever rather than reboot -- the hang-then-watchdog
+    behaviour confirms a TRUE HANG, not a panic.
+  * That rules out every panic-based failure: "No working init found",
+    "VFS: Unable to mount root fs", "Attempted to kill init!", and any
+    oops promoted by PANIC_ON_OOPS.
+
+WHAT ROUND 7 ADDS
+-----------------
+The remaining unknown is a pure hang somewhere at or after kernel_execve() of
+/init, taking no panic path.  Round 7 splits that into mutually exclusive
+outcomes with four new bands:
+
+    CP21  kernel_execve() RETURNED  -> exec of /init failed
+    CP22  first ever el0 syscall    -> userspace ran >=1 instruction (KEY BIT)
+    CP23  4096th syscall            -> userspace is genuinely running
+    CP24  arm64_force_sig_fault()   -> a fatal signal reached userspace
+
+A custom minimal /init was considered and rejected: CONFIG_DEVMEM is not set,
+so a userspace helper cannot mmap /dev/mem to paint bands, and it would
+therefore be less observable than the kernel-side probes above.
+
+CP24 is deliberately hooked at arm64_force_sig_fault(), NOT at el0_da/el0_ia.
+Ordinary demand paging traverses those entry points thousands of times per
+second, so they would light unconditionally and carry no information.
+
+READOUT CHANGE: TWO CLUSTERS, NOT MORE STRIPES
+----------------------------------------------
+25 bands in groups of four would read as "6 groups plus 1" against round 6's
+"5 groups plus 1" -- far too easy to confuse, and round 5 already proved that
+asking for a fine-grained count is unreliable.  Instead CP0..CP20 keep
+byte-identical slots to round 6 and the userspace bands form a SECOND cluster
+143 rows lower (vs 46 rows between groups and 13 within a group).  The reader
+counts bands in the bottom cluster only, 0..4.  The top cluster doubles as a
+regression control: it must reproduce the round-6 photo exactly, otherwise the
+hot-path hook in do_el0_svc broke something.
+
+HOT PATH CAVEAT
+---------------
+CP22/CP23 hook do_el0_svc(), the hottest path in the kernel.  The counter is
+atomic (a lost update on a non-atomic counter could step past an "== threshold"
+test, suppressing CP23 and INVERTING the diagnosis), and the hook disarms
+itself permanently once CP23 fires, after which it is one predicted-taken
+branch.  If round 7 misbehaves in a way round 6 did not, this hook is the first
+suspect.
+
+ROUND 6 NOTES BELOW (still accurate)
+====================================
 
 This device has no usable kernel log channel at all:
 
@@ -114,7 +177,7 @@ SPLASH_BASE_ASM = "0xd5100000"
 
 CP0_BAND_ASM = "0x20000"          # must be encodable as an ADD immediate
 
-EXPECT = 18
+EXPECT = 22
 applied = 0
 failed = 0
 
@@ -150,7 +213,7 @@ def patch(relpath, edits):
 
 
 print("=" * 62)
-print("VA48 BEACON PATCHER  (round 6: fat grouped bands + panic marker)")
+print("VA48 BEACON PATCHER  (round 7: userspace cluster CP21-CP24)")
 print("=" * 62)
 
 # ------------------------------------------------------------------ head.S CP0
@@ -218,8 +281,28 @@ SETUP_FN_NEW = """/*
 #define VA48_SPLASH_BASE	%s
 #define VA48_STRIDE		0x28000UL	/* 160 KiB slot pitch  */
 #define VA48_BAND		0x18000UL	/*  96 KiB painted     */
-#define VA48_PANIC_SLOT		27
+#define VA48_PANIC_SLOT		36
 #define VA48_PANIC_BAND		0x50000UL	/* 320 KiB, ~65 rows   */
+
+/*
+ * Round 7 adds a second, visually separate cluster for the userspace probes.
+ * CP0..CP20 keep byte-identical slots to round 6 so the top cluster is a
+ * regression control: it must reproduce the round-6 photo exactly, otherwise
+ * the hot-path probe (CP22/CP23 in do_el0_svc) broke something.
+ *
+ *   kernel cluster    CP0..CP20   slots 0..25   groups of four
+ *   -- 4 empty slots (~142 rows of black, 3x a group gap) --
+ *   userspace cluster CP21..CP24  slots 30..33  one run of four
+ *   -- 2 empty slots --
+ *   panic block       slot 36     320 KiB, ~65 rows
+ *
+ * The reader counts bands in the BOTTOM cluster only (0..4). Round 6 asked for
+ * "N groups plus M" and that worked, but 25 bands would be "6 groups plus 1"
+ * versus round 6's "5 groups plus 1" -- too easy to confuse. Two clusters
+ * separated by an unmistakable gap removes the ambiguity entirely.
+ */
+#define VA48_US_FIRST_CP	21
+#define VA48_US_FIRST_SLOT	30
 
 /* Set once paging_init() has run; guards the panic marker's linear access. */
 bool va48_beacon_linear __read_mostly;
@@ -235,9 +318,15 @@ static phys_addr_t va48_beacon_pa(int slot)
 	return (phys_addr_t)VA48_SPLASH_BASE + (phys_addr_t)slot * VA48_STRIDE;
 }
 
-/* Group gaps: one slot skipped after every fourth band. */
+/*
+ * Slot layout. Kernel bands are grouped four-at-a-time: the cp/4 term skips one
+ * slot after every fourth band. The userspace bands (CP21+) form a single run
+ * of four in their own cluster, offset far enough below to be unmistakable.
+ */
 static int va48_beacon_slot(int cp)
 {
+	if (cp >= VA48_US_FIRST_CP)
+		return VA48_US_FIRST_SLOT + (cp - VA48_US_FIRST_CP);
 	return cp + cp / 4;
 }
 
@@ -264,6 +353,70 @@ void va48_beacon(int cp)
 }
 
 /*
+ * CP22/CP23: userspace liveness, driven from the syscall entry path.
+ *
+ * do_el0_svc() is the hottest path in the kernel, so this must cost almost
+ * nothing once armed. After the CP23 threshold is crossed, va48_svc_count stops
+ * being incremented and the whole hook is a single load-compare-branch that is
+ * always predicted not-taken.
+ *
+ * CP22 firing at all is the single most valuable bit of round 7: it proves
+ * userspace executed at least one instruction and successfully trapped back
+ * into the kernel. Nothing before round 7 could establish that.
+ */
+#define VA48_SVC_ALIVE		4096	/* CP23 threshold */
+
+/*
+ * Deliberately atomic. do_el0_svc() runs concurrently on every CPU, and a
+ * non-atomic read-modify-write here loses updates -- which would let the count
+ * step straight past an "== VA48_SVC_ALIVE" test without ever equalling it. CP23
+ * would then never paint, and an absent CP23 reads as "userspace died early":
+ * the diagnosis would be inverted by a data race. Thresholds are therefore
+ * ">=", and each band has its own one-shot flag so a lost update can only
+ * delay a band, never suppress it.
+ */
+static atomic_t va48_svc_count = ATOMIC_INIT(0);
+static bool va48_svc_first, va48_svc_alive;
+
+void va48_beacon_svc(void)
+{
+	int n;
+
+	if (likely(va48_svc_alive))
+		return;
+
+	n = atomic_inc_return(&va48_svc_count);
+
+	if (unlikely(!va48_svc_first)) {
+		va48_svc_first = true;
+		va48_beacon(22);		/* userspace ran and trapped back */
+	}
+	if (unlikely(n >= VA48_SVC_ALIVE)) {
+		va48_svc_alive = true;		/* disarms the hook for good */
+		va48_beacon(23);		/* userspace is really running */
+	}
+}
+
+/*
+ * CP24: a fatal signal was delivered to userspace (SIGSEGV/SIGBUS/SIGILL from
+ * arm64_force_sig_fault). Deliberately NOT hooked at el0_da/el0_ia: ordinary
+ * demand paging traverses those thousands of times per second, so they carry no
+ * signal at all. Reaching force_sig means the fault could not be resolved.
+ *
+ * Painted once; repeated faults must not repaint (cheap, and keeps the photo
+ * meaning "at least one" rather than "many").
+ */
+void va48_beacon_sigfault(void)
+{
+	static bool done;
+
+	if (done)
+		return;
+	done = true;
+	va48_beacon(24);
+}
+
+/*
  * Called from panic(). A much thicker block, well below the band cluster:
  * present => the kernel reached panic(); absent => a true hang. Guarded
  * because panic() can fire before paging_init().
@@ -282,9 +435,13 @@ void __init __no_sanitize_address setup_arch(char **cmdline_p)
 patch("arch/arm64/kernel/setup.c", [
     # early_ioremap()/early_iounmap()/memset_io() live behind linux/io.h, which
     # setup.c does not include on its own.
-    ("linux/io.h include",
+    # early_ioremap()/early_iounmap()/memset_io() need linux/io.h, and the CP22
+    # counter needs atomic_t. Both are pulled in indirectly via linux/kernel.h in
+    # practice, but relying on transitive includes is exactly the kind of
+    # assumption that breaks on the runner rather than here.
+    ("linux/io.h + atomic.h includes",
      "#include <linux/mm.h>\n",
-     "#include <linux/mm.h>\n#include <linux/io.h>\n"),
+     "#include <linux/mm.h>\n#include <linux/io.h>\n#include <linux/atomic.h>\n"),
 
     ("beacon helpers + defines", SETUP_FN_OLD, SETUP_FN_NEW),
 
@@ -364,6 +521,18 @@ patch("init/main.c", [
     ("CP20 before userspace init",
      "\tif (ramdisk_execute_command) {\n",
      "\tva48_beacon(20);\n\tif (ramdisk_execute_command) {\n"),
+
+    # CP21 -- kernel_execve() RETURNED, i.e. exec of /init failed. This is the
+    # opposite signal to CP22: on a successful exec, run_init_process() never
+    # returns, so CP21 stays dark and CP22 lights instead. Seeing CP21 means the
+    # ELF loader / mm switch / user pagetable setup rejected the binary, which
+    # under VA48 is a live suspect (TASK_SIZE, mmap base, stack placement).
+    ("CP21 after ramdisk exec failed",
+     "\t\tpr_err(\"Failed to execute %s (error %d)\\n\",\n"
+     "\t\t       ramdisk_execute_command, ret);\n",
+     "\t\tva48_beacon(21);\n"
+     "\t\tpr_err(\"Failed to execute %s (error %d)\\n\",\n"
+     "\t\t       ramdisk_execute_command, ret);\n"),
 ])
 
 # ----------------------------------------------------------------- kernel/panic.c
@@ -390,12 +559,49 @@ patch("kernel/panic.c", [
      "\tva48_beacon_panic();\n"),
 ])
 
+# ------------------------------------------------ arch/arm64/kernel/syscall.c
+# CP22/CP23: the syscall entry hook. This is the one probe that touches a hot
+# path, and it is the reason round 7 exists: nothing else can prove that
+# userspace executed an instruction.
+patch("arch/arm64/kernel/syscall.c", [
+    ("svc beacon decl",
+     "void do_el0_svc(struct pt_regs *regs)\n",
+     "/* VA48 BEACON: defined in arch/arm64/kernel/setup.c */\n"
+     "void va48_beacon_svc(void);\n\n"
+     "void do_el0_svc(struct pt_regs *regs)\n"),
+
+    ("CP22+CP23 at do_el0_svc",
+     "void do_el0_svc(struct pt_regs *regs)\n{\n\tfp_user_discard();\n",
+     "void do_el0_svc(struct pt_regs *regs)\n{\n"
+     "\tva48_beacon_svc();\n"
+     "\tfp_user_discard();\n"),
+])
+
+# -------------------------------------------------- arch/arm64/kernel/traps.c
+# CP24: a fatal signal actually reached userspace. NOT hooked at el0_da/el0_ia,
+# which ordinary demand paging traverses constantly.
+patch("arch/arm64/kernel/traps.c", [
+    ("sigfault beacon decl + CP24 call",
+     "void arm64_force_sig_fault(int signo, int code, unsigned long far,\n"
+     "\t\t\t   const char *str)\n"
+     "{\n"
+     "\tarm64_show_signal(signo, str);\n",
+
+     "/* VA48 BEACON: defined in this directory's setup.c */\n"
+     "void va48_beacon_sigfault(void);\n\n"
+     "void arm64_force_sig_fault(int signo, int code, unsigned long far,\n"
+     "\t\t\t   const char *str)\n"
+     "{\n"
+     "\tva48_beacon_sigfault();\n"
+     "\tarm64_show_signal(signo, str);\n"),
+])
+
 print("-" * 62)
 print("applied=%d expected=%d failed=%d" % (applied, EXPECT, failed))
 if failed or applied != EXPECT:
     print("BEACON PATCH FAILED - refusing to continue")
     sys.exit(1)
-print("beacon OK: CP0 raw-phys, CP1-2 early_ioremap, CP3-19 linear map")
-print("splash base %s, stride 160 KiB, band 96 KiB, groups of 4"
-      % SPLASH_BASE_C)
-print("CP0 = 128 KiB anchor; panic marker = slot 27, 320 KiB")
+print("beacon OK: CP0 raw-phys, CP1-2 early_ioremap, CP3-24 linear map")
+print("splash base %s, stride 160 KiB, band 96 KiB" % SPLASH_BASE_C)
+print("kernel cluster CP0-CP20 slots 0-25 (groups of 4, identical to r6)")
+print("userspace cluster CP21-CP24 slots 30-33; panic marker = slot 36")
