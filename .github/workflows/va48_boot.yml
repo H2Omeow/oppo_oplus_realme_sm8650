@@ -178,8 +178,8 @@ jobs:
         run: |
           set -o pipefail
           cd kernel_workspace/common
-          PB_SHA=98b15805805f46cac5c2990d8c8d004a46b9436ab0c0ec1e37a2725332a8360d
-          PB_LEN=31639
+          PB_SHA=13dd5a8e52a4be6c07ef1b3bb0ee02c6ccda89fc6ac22766559c015c7b2e4434
+          PB_LEN=31404
           echo "正在下载信标补丁器..."
           for i in 1 2 3; do
             wget -q "https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/va48/patch_beacon.py" -O /tmp/patch_beacon.py && break
@@ -194,7 +194,7 @@ jobs:
             exit 1
           fi
           python3 /tmp/patch_beacon.py . 2>&1 | tee /tmp/beacon.log
-          grep -q 'applied=26 expected=26 failed=0' /tmp/beacon.log || { echo "::error::信标补丁数不符, 需要 26/26"; exit 1; }
+          grep -q 'applied=25 expected=25 failed=0' /tmp/beacon.log || { echo "::error::信标补丁数不符, 需要 25/25"; exit 1; }
           echo "--- r8 探针核对 ---"
           grep -n 'VA48 BEACON CP0' arch/arm64/kernel/head.S
           echo "setup.c  va48_beacon 出现次数: $(grep -c va48_beacon arch/arm64/kernel/setup.c)"
