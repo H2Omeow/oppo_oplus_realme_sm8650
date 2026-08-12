@@ -177,7 +177,7 @@ SPLASH_BASE_ASM = "0xd5100000"
 
 CP0_BAND_ASM = "0x20000"          # must be encodable as an ADD immediate
 
-EXPECT = 22
+EXPECT = 26
 applied = 0
 failed = 0
 
@@ -213,7 +213,7 @@ def patch(relpath, edits):
 
 
 print("=" * 62)
-print("VA48 BEACON PATCHER  (round 7: userspace cluster CP21-CP24)")
+print("VA48 BEACON PATCHER  (round 8: variable-width + reboot probes)")
 print("=" * 62)
 
 # ------------------------------------------------------------------ head.S CP0
@@ -281,28 +281,58 @@ SETUP_FN_NEW = """/*
 #define VA48_SPLASH_BASE	%s
 #define VA48_STRIDE		0x28000UL	/* 160 KiB slot pitch  */
 #define VA48_BAND		0x18000UL	/*  96 KiB painted     */
-#define VA48_PANIC_SLOT		36
-#define VA48_PANIC_BAND		0x50000UL	/* 320 KiB, ~65 rows   */
 
 /*
- * Round 7 adds a second, visually separate cluster for the userspace probes.
- * CP0..CP20 keep byte-identical slots to round 6 so the top cluster is a
- * regression control: it must reproduce the round-6 photo exactly, otherwise
- * the hot-path probe (CP22/CP23 in do_el0_svc) broke something.
+ * ROUND 8 GEOMETRY
  *
- *   kernel cluster    CP0..CP20   slots 0..25   groups of four
- *   -- 4 empty slots (~142 rows of black, 3x a group gap) --
- *   userspace cluster CP21..CP24  slots 30..33  one run of four
- *   -- 2 empty slots --
- *   panic block       slot 36     320 KiB, ~65 rows
+ * Round 7 reported "two bands in the lower cluster" and that turned out to be
+ * ambiguous: CP21+CP22 (exec of /init FAILED, a fallback init took over) and
+ * CP22+CP23 (/init ran fine and userspace was busy) differ by 32 rows of black,
+ * which is not something anyone can judge from a photo. That was a design
+ * defect -- identical-looking bands carrying opposite meanings.
  *
- * The reader counts bands in the BOTTOM cluster only (0..4). Round 6 asked for
- * "N groups plus M" and that worked, but 25 bands would be "6 groups plus 1"
- * versus round 6's "5 groups plus 1" -- too easy to confuse. Two clusters
- * separated by an unmistakable gap removes the ambiguity entirely.
+ * Round 8 fixes it structurally: every band below the kernel cluster has its
+ * own THICKNESS. Identity no longer depends on counting or on judging gap
+ * sizes, only on "how thick is it", which is robust in a photograph.
+ *
+ *   kernel cluster     CP0..CP20  slots 0..25, VA48_STRIDE pitch, 96 KiB bands
+ *                      >>> byte-identical to r6/r7: regression control <<<
+ *   -- ~50 rows black --
+ *   progress cluster   CP21..CP24  thickness 1x/2x/3x/4x of VA48_UBASE
+ *   -- ~50 rows black --
+ *   reboot cluster     CP25..CP27  thickness 1x/2x/3x  (who triggered reboot)
+ *   -- ~50 rows black --
+ *   panic block        5x -- still the thickest thing on screen
+ *
+ * Bottom lands at 6.94 MiB, leaving ~0.97 MiB of margin under the pessimistic
+ * 7.91 MiB framebuffer estimate. Margin matters: if the panic block fell off
+ * screen, "no panic" and "not visible" would be indistinguishable, which is
+ * exactly the round-5 failure mode that produces a WRONG diagnosis rather than
+ * merely a missing data point.
  */
 #define VA48_US_FIRST_CP	21
-#define VA48_US_FIRST_SLOT	30
+#define VA48_UBASE		0x14000UL	/*  80 KiB, ~16 rows   */
+
+/*
+ * Explicit (offset, length) table rather than a stride formula: thicknesses
+ * differ, so a uniform pitch cannot express this layout without either wasting
+ * vertical space or letting a thick band overlap the next slot.
+ */
+static const struct {
+	unsigned long off;
+	unsigned long len;
+} va48_us_band[] = {
+	{ 0x0440000UL, 0x014000UL },	/* CP21 1x  exec /init failed        */
+	{ 0x0468000UL, 0x028000UL },	/* CP22 2x  userspace first syscall  */
+	{ 0x04a4000UL, 0x03c000UL },	/* CP23 3x  userspace ran 4096 calls */
+	{ 0x04f4000UL, 0x050000UL },	/* CP24 4x  fatal signal delivered   */
+	{ 0x0598000UL, 0x014000UL },	/* CP25 1x  reboot() syscall         */
+	{ 0x05c0000UL, 0x028000UL },	/* CP26 2x  kernel_restart()         */
+	{ 0x05fc000UL, 0x03c000UL },	/* CP27 3x  emergency_restart()      */
+};
+
+#define VA48_PANIC_OFF		0x068c000UL
+#define VA48_PANIC_BAND		0x064000UL	/* 5x, ~81 rows        */
 
 /* Set once paging_init() has run; guards the panic marker's linear access. */
 bool va48_beacon_linear __read_mostly;
@@ -313,33 +343,52 @@ static void va48_beacon_paint(void *va, unsigned long len)
 	dcache_clean_inval_poc((unsigned long)va, (unsigned long)va + len);
 }
 
-static phys_addr_t va48_beacon_pa(int slot)
+static phys_addr_t va48_beacon_pa(unsigned long off)
 {
-	return (phys_addr_t)VA48_SPLASH_BASE + (phys_addr_t)slot * VA48_STRIDE;
+	return (phys_addr_t)VA48_SPLASH_BASE + (phys_addr_t)off;
+}
+
+/* Kernel cluster: uniform pitch, one slot skipped after every fourth band. */
+static unsigned long va48_beacon_koff(int cp)
+{
+	return (unsigned long)(cp + cp / 4) * VA48_STRIDE;
 }
 
 /*
- * Slot layout. Kernel bands are grouped four-at-a-time: the cp/4 term skips one
- * slot after every fourth band. The userspace bands (CP21+) form a single run
- * of four in their own cluster, offset far enough below to be unmistakable.
+ * Resolve a checkpoint to (offset, length). Kernel checkpoints keep the r6/r7
+ * stride formula so the top cluster is unchanged; CP21+ come from the explicit
+ * thickness table above.
  */
-static int va48_beacon_slot(int cp)
+static void va48_beacon_where(int cp, unsigned long *off, unsigned long *len)
 {
-	if (cp >= VA48_US_FIRST_CP)
-		return VA48_US_FIRST_SLOT + (cp - VA48_US_FIRST_CP);
-	return cp + cp / 4;
+	if (cp >= VA48_US_FIRST_CP) {
+		int i = cp - VA48_US_FIRST_CP;
+
+		if (i >= (int)ARRAY_SIZE(va48_us_band)) {	/* cannot happen */
+			*off = va48_us_band[0].off;
+			*len = va48_us_band[0].len;
+			return;
+		}
+		*off = va48_us_band[i].off;
+		*len = va48_us_band[i].len;
+		return;
+	}
+	*off = va48_beacon_koff(cp);
+	*len = VA48_BAND;
 }
 
 /* CP1..CP2: before paging_init(), the linear map is not usable yet. */
 void __init va48_beacon_early(int cp)
 {
-	phys_addr_t pa = va48_beacon_pa(va48_beacon_slot(cp));
-	void __iomem *io = early_ioremap(pa, VA48_BAND);
+	unsigned long off, len;
+	void __iomem *io;
 
+	va48_beacon_where(cp, &off, &len);
+	io = early_ioremap(va48_beacon_pa(off), len);
 	if (!io)
 		return;
-	memset_io(io, 0xff, VA48_BAND);
-	early_iounmap(io, VA48_BAND);
+	memset_io(io, 0xff, len);
+	early_iounmap(io, len);
 }
 
 /*
@@ -348,8 +397,10 @@ void __init va48_beacon_early(int cp)
  */
 void va48_beacon(int cp)
 {
-	va48_beacon_paint((void *)phys_to_virt(va48_beacon_pa(va48_beacon_slot(cp))),
-			  VA48_BAND);
+	unsigned long off, len;
+
+	va48_beacon_where(cp, &off, &len);
+	va48_beacon_paint((void *)phys_to_virt(va48_beacon_pa(off)), len);
 }
 
 /*
@@ -425,8 +476,38 @@ void va48_beacon_panic(void)
 {
 	if (!va48_beacon_linear)
 		return;
-	va48_beacon_paint((void *)phys_to_virt(va48_beacon_pa(VA48_PANIC_SLOT)),
+	va48_beacon_paint((void *)phys_to_virt(va48_beacon_pa(VA48_PANIC_OFF)),
 			  VA48_PANIC_BAND);
+}
+
+/*
+ * CP25..CP27: who actually triggered the reboot.
+ *
+ * Round 7 established that userspace runs (CP22/CP23 lit), does real work, and
+ * then the device reboots after roughly ten seconds -- far too quick for the
+ * ~32 s PMIC watchdog seen in round 6, and impossible for a panic, since
+ * PANIC_TIMEOUT=0 makes a panic hang forever instead of resetting. Something is
+ * therefore asking for a reboot on purpose, and these three bands say which
+ * layer did it:
+ *
+ *   CP25  reboot() syscall     userspace decided to reboot (Android init:
+ *                              dm-verity/AVB failure, a critical mount failing,
+ *                              or a critical service crash-looping)
+ *   CP26  kernel_restart()     an orderly kernel-side restart
+ *   CP27  emergency_restart()  the violent path, no syscore shutdown
+ *
+ * CP25 is the informative one: it moves the fault out of the kernel entirely
+ * and into Android's own boot policy, which is a different (and far more
+ * tractable) class of problem than a VA48 mapping bug.
+ *
+ * These paths run with the linear map live, but the guard is kept because
+ * emergency_restart() can in principle be reached from very early code.
+ */
+void va48_beacon_reboot(int cp)
+{
+	if (!va48_beacon_linear)
+		return;
+	va48_beacon(cp);
 }
 
 void __init __no_sanitize_address setup_arch(char **cmdline_p)
@@ -596,12 +677,71 @@ patch("arch/arm64/kernel/traps.c", [
      "\tarm64_show_signal(signo, str);\n"),
 ])
 
+# ---------------------------------------------------------------- kernel/reboot.c
+# CP25..CP27: who triggered the reboot.
+#
+# Round 7 showed userspace ran (CP22+CP23 lit) then rebooted ~10 s later.
+# PANIC_TIMEOUT=0 makes a panic hang forever -- so the reboot must have been
+# requested deliberately. These bands say which layer asked for it:
+#
+#   CP25  reboot() syscall entry   userspace (Android init) requested reboot
+#   CP26  kernel_restart()         orderly kernel-side restart
+#   CP27  emergency_restart()      violent path, no syscore shutdown
+#
+# Typical Android init reboot: CP25 fires first (syscall entry), then CP26
+# fires when kernel_restart() is called by the syscall handler.  A kernel-
+# initiated orderly restart skips CP25 and only fires CP26.  Emergency restart
+# fires only CP27.
+#
+# All three bands have distinct thicknesses in the r8 layout (1x / 2x / 3x of
+# VA48_UBASE = 80 KiB), so they are unambiguous in a photograph.
+patch("kernel/reboot.c", [
+    # Insert the declaration before kernel_restart_prepare(), which is always
+    # the first function defined in this file -- a stable anchor across OEM
+    # patches.
+    ("reboot beacon decl",
+     "void kernel_restart_prepare(char *cmd)\n",
+     "/* VA48 BEACON: defined in arch/arm64/kernel/setup.c */\n"
+     "#ifdef CONFIG_ARM64\n"
+     "void va48_beacon_reboot(int cp);\n"
+     "#else\n"
+     "static inline void va48_beacon_reboot(int cp) { }\n"
+     "#endif\n\n"
+     "void kernel_restart_prepare(char *cmd)\n"),
+
+    # CP25: userspace entered the reboot() syscall.  Fires before the lock so
+    # we cannot miss it even if the transition hangs.
+    ("CP25 at reboot syscall",
+     "\tmutex_lock(&system_transition_mutex);\n\tswitch (cmd) {\n",
+     "\tva48_beacon_reboot(25);\n"
+     "\tmutex_lock(&system_transition_mutex);\n\tswitch (cmd) {\n"),
+
+    # CP26: kernel_restart() entered.  Covers both the reboot-syscall path and
+    # any direct kernel-side orderly restart.
+    ("CP26 at kernel_restart",
+     "void kernel_restart(char *cmd)\n{\n\tkernel_restart_prepare(cmd);\n",
+     "void kernel_restart(char *cmd)\n{\n"
+     "\tva48_beacon_reboot(26);\n"
+     "\tkernel_restart_prepare(cmd);\n"),
+
+    # CP27: emergency_restart() entered.  The violent path -- no device
+    # shutdown, no notifiers.  Only fires on kernel panic with panic_reboot
+    # or when the hw watchdog kicks machine_restart directly.
+    ("CP27 at emergency_restart",
+     "void emergency_restart(void)\n{\n\tkmsg_dump(KMSG_DUMP_EMERG);\n",
+     "void emergency_restart(void)\n{\n"
+     "\tva48_beacon_reboot(27);\n"
+     "\tkmsg_dump(KMSG_DUMP_EMERG);\n"),
+])
+
 print("-" * 62)
 print("applied=%d expected=%d failed=%d" % (applied, EXPECT, failed))
 if failed or applied != EXPECT:
     print("BEACON PATCH FAILED - refusing to continue")
     sys.exit(1)
-print("beacon OK: CP0 raw-phys, CP1-2 early_ioremap, CP3-24 linear map")
-print("splash base %s, stride 160 KiB, band 96 KiB" % SPLASH_BASE_C)
-print("kernel cluster CP0-CP20 slots 0-25 (groups of 4, identical to r6)")
-print("userspace cluster CP21-CP24 slots 30-33; panic marker = slot 36")
+print("beacon OK: CP0 raw-phys, CP1-2 early_ioremap, CP3-27 linear map")
+print("splash base %s, stride 160 KiB (kernel cluster)" % SPLASH_BASE_C)
+print("kernel cluster CP0-CP20 slots 0-25 (groups of 4, identical to r6/r7)")
+print("progress cluster CP21-CP24 variable thickness (1x/2x/3x/4x of 80 KiB)")
+print("reboot cluster  CP25-CP27 variable thickness (1x/2x/3x of 80 KiB)")
+print("panic block     offset 0x68c000, 5x thickness (~81 rows)")
