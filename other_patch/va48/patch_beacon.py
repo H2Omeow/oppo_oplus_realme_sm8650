@@ -177,7 +177,7 @@ SPLASH_BASE_ASM = "0xd5100000"
 
 CP0_BAND_ASM = "0x20000"          # must be encodable as an ADD immediate
 
-EXPECT = 26
+EXPECT = 25
 applied = 0
 failed = 0
 
@@ -696,42 +696,35 @@ patch("arch/arm64/kernel/traps.c", [
 # All three bands have distinct thicknesses in the r8 layout (1x / 2x / 3x of
 # VA48_UBASE = 80 KiB), so they are unambiguous in a photograph.
 patch("kernel/reboot.c", [
-    # Insert the declaration before kernel_restart_prepare(), which is always
-    # the first function defined in this file -- a stable anchor across OEM
-    # patches.
-    ("reboot beacon decl",
-     "void kernel_restart_prepare(char *cmd)\n",
+    # emergency_restart() is defined before kernel_restart_prepare() in this OEM
+    # kernel (confirmed by build error: line 79 vs 88). The declaration must be
+    # placed before emergency_restart(), not before kernel_restart_prepare().
+    # Combine the decl with the CP27 hook so one anchor covers both.
+    ("CP27 + reboot beacon decl at emergency_restart",
+     "void emergency_restart(void)\n{\n\tkmsg_dump(KMSG_DUMP_EMERG);\n",
      "/* VA48 BEACON: defined in arch/arm64/kernel/setup.c */\n"
      "#ifdef CONFIG_ARM64\n"
      "void va48_beacon_reboot(int cp);\n"
      "#else\n"
      "static inline void va48_beacon_reboot(int cp) { }\n"
      "#endif\n\n"
-     "void kernel_restart_prepare(char *cmd)\n"),
+     "void emergency_restart(void)\n{\n"
+     "\tva48_beacon_reboot(27);\n"
+     "\tkmsg_dump(KMSG_DUMP_EMERG);\n"),
 
-    # CP25: userspace entered the reboot() syscall.  Fires before the lock so
-    # we cannot miss it even if the transition hangs.
-    ("CP25 at reboot syscall",
-     "\tmutex_lock(&system_transition_mutex);\n\tswitch (cmd) {\n",
-     "\tva48_beacon_reboot(25);\n"
-     "\tmutex_lock(&system_transition_mutex);\n\tswitch (cmd) {\n"),
-
-    # CP26: kernel_restart() entered.  Covers both the reboot-syscall path and
-    # any direct kernel-side orderly restart.
+    # CP26: orderly kernel-side restart. Covers both the reboot-syscall path
+    # and any direct kernel-initiated restart.
     ("CP26 at kernel_restart",
      "void kernel_restart(char *cmd)\n{\n\tkernel_restart_prepare(cmd);\n",
      "void kernel_restart(char *cmd)\n{\n"
      "\tva48_beacon_reboot(26);\n"
      "\tkernel_restart_prepare(cmd);\n"),
 
-    # CP27: emergency_restart() entered.  The violent path -- no device
-    # shutdown, no notifiers.  Only fires on kernel panic with panic_reboot
-    # or when the hw watchdog kicks machine_restart directly.
-    ("CP27 at emergency_restart",
-     "void emergency_restart(void)\n{\n\tkmsg_dump(KMSG_DUMP_EMERG);\n",
-     "void emergency_restart(void)\n{\n"
-     "\tva48_beacon_reboot(27);\n"
-     "\tkmsg_dump(KMSG_DUMP_EMERG);\n"),
+    # CP25: userspace called the reboot() syscall.  Fires before the lock.
+    ("CP25 at reboot syscall",
+     "\tmutex_lock(&system_transition_mutex);\n\tswitch (cmd) {\n",
+     "\tva48_beacon_reboot(25);\n"
+     "\tmutex_lock(&system_transition_mutex);\n\tswitch (cmd) {\n"),
 ])
 
 print("-" * 62)
