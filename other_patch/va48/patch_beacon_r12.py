@@ -457,13 +457,14 @@ void __init __no_sanitize_address setup_arch(char **cmdline_p)
 """
 
 patch("arch/arm64/kernel/setup.c", [
-    ("linux/io.h + atomic.h + string.h + font.h includes",
+    ("linux/io.h + atomic.h + string.h + font.h + nmi.h includes",
      "#include <linux/mm.h>\n",
      "#include <linux/mm.h>\n"
      "#include <linux/io.h>\n"
      "#include <linux/atomic.h>\n"
      "#include <linux/string.h>\n"
-     "#include <linux/font.h>\n"),
+     "#include <linux/font.h>\n"
+     "#include <linux/nmi.h>\n"),
 
     ("beacon helpers + defines", SETUP_FN_OLD, SETUP_FN_NEW),
 
