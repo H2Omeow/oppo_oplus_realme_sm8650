@@ -1,7 +1,63 @@
 #!/usr/bin/env python3
 """
-VA48 BEACON PATCHER  (round 7)
+VA48 BEACON PATCHER  (round 9)
 ==============================
+
+ROUND 8 RESULT (expected — not yet flashed)
+-------------------------------------------
+r8 adds CP25/CP26/CP27 (reboot path) to r7's confirmed result. r7 showed:
+  CP0..CP20 all lit (full kernel VA48 working), CP22+CP23 lit (userspace ran
+  4096+ syscalls), ~10s intentional reboot (not panic: PANIC_TIMEOUT=0 would
+  hang). r8 will confirm which reboot path (sys_reboot/kernel_restart/
+  emergency_restart) is taken.
+
+WHAT ROUND 9 ADDS
+-----------------
+Two changes based on analysis of fstab.qcom, modules.load, and module strings:
+
+  1. PRIMARY FIX: va48_fix_cmdline()
+     When booting via "fastboot boot" on an unlocked bootloader, ABL/XBL
+     appends "androidboot.verifiedbootstate=orange" to the kernel cmdline.
+     Several OPLUS/ColorOS services (security broker, oplus_guard, and similar
+     early-boot watchmen) read /proc/cmdline during second-stage init and call
+     sys_reboot() on detecting a non-green state. This is the most likely cause
+     of the ~10s reboot: r7 showed 4096+ syscalls (well into second-stage init),
+     intentional reboot (not panic), and exactly the timing window where OPLUS
+     verified-boot enforcement fires.
+
+     Fix: patch boot_command_line[] in-place at the end of setup_arch(), before
+     start_kernel() copies it to saved_command_line. "orange" (6 bytes) →
+     "green " (same length; trailing space is harmless to both __setup() parsers
+     and Android init's property importer).
+
+  2. DIAGNOSTIC: CP28 + CP29 (reboot command type)
+     If the primary fix doesn't fully stop the reboot, these two new bands in
+     the gap between the reboot cluster and the panic block identify which
+     REBOOT_CMD was used:
+       CP28 (1x) = LINUX_REBOOT_CMD_RESTART   — bare restart, no reason string
+       CP29 (2x) = LINUX_REBOOT_CMD_RESTART2  — restart with reason string
+                                                 (Android PowerManager path;
+                                                  init critical-service failure
+                                                  typically uses RESTART2 with
+                                                  a reason like "bootloop")
+
+     Seeing CP29 but not CP28 → Android PowerManager / init triggered reboot.
+     Seeing CP28 but not CP29 → bare kernel_restart(NULL) call.
+     Seeing neither (but CP26 lit) → kernel_restart() called internally,
+       not through sys_reboot() — likely a module watchdog.
+
+  PANIC_OFF moved from 0x068c000 to 0x06c0000 to make room for CP28/CP29.
+  Total layout now ends at ~7.14 MiB, still inside the ~7.91 MiB margin.
+
+ROUND 7 RESULT (confirmed on real hardware)
+-------------------------------------------
+CP0..CP20 all lit (kernel fully working), CP22+CP23 lit in lower cluster
+(userspace executed 4096+ syscalls). Device rebooted after ~10s. This was
+NOT a panic (PANIC_TIMEOUT=0 → panic hangs forever; reboot rules out panic).
+The reboot is intentional: something in userspace called sys_reboot().
+
+ROUND 6 RESULT (confirmed on real hardware)
+-------------------------------------------
 
 ROUND 6 RESULT (confirmed on real hardware)
 -------------------------------------------
@@ -177,7 +233,7 @@ SPLASH_BASE_ASM = "0xd5100000"
 
 CP0_BAND_ASM = "0x20000"          # must be encodable as an ADD immediate
 
-EXPECT = 25
+EXPECT = 27
 applied = 0
 failed = 0
 
@@ -329,9 +385,11 @@ static const struct {
 	{ 0x0598000UL, 0x014000UL },	/* CP25 1x  reboot() syscall         */
 	{ 0x05c0000UL, 0x028000UL },	/* CP26 2x  kernel_restart()         */
 	{ 0x05fc000UL, 0x03c000UL },	/* CP27 3x  emergency_restart()      */
+	{ 0x0640000UL, 0x014000UL },	/* CP28 1x  RESTART (bare restart)   */
+	{ 0x065c000UL, 0x028000UL },	/* CP29 2x  RESTART2 (with reason)   */
 };
 
-#define VA48_PANIC_OFF		0x068c000UL
+#define VA48_PANIC_OFF		0x06c0000UL
 #define VA48_PANIC_BAND		0x064000UL	/* 5x, ~81 rows        */
 
 /* Set once paging_init() has run; guards the panic marker's linear access. */
@@ -481,20 +539,25 @@ void va48_beacon_panic(void)
 }
 
 /*
- * CP25..CP27: who actually triggered the reboot.
+ * CP25..CP29: who triggered the reboot and what kind.
  *
  * Round 7 established that userspace runs (CP22/CP23 lit), does real work, and
  * then the device reboots after roughly ten seconds -- far too quick for the
  * ~32 s PMIC watchdog seen in round 6, and impossible for a panic, since
  * PANIC_TIMEOUT=0 makes a panic hang forever instead of resetting. Something is
- * therefore asking for a reboot on purpose, and these three bands say which
- * layer did it:
+ * therefore asking for a reboot on purpose, and these bands say which layer did
+ * it and what kind of restart was requested:
  *
  *   CP25  reboot() syscall     userspace decided to reboot (Android init:
  *                              dm-verity/AVB failure, a critical mount failing,
  *                              or a critical service crash-looping)
  *   CP26  kernel_restart()     an orderly kernel-side restart
  *   CP27  emergency_restart()  the violent path, no syscore shutdown
+ *   CP28  RESTART cmd          bare kernel_restart(NULL) through sys_reboot
+ *   CP29  RESTART2 cmd         kernel_restart(reason) -- Android PowerManager
+ *                              and init critical-service reboot use this path;
+ *                              the reason string ("bootloop", "recovery", etc.)
+ *                              identifies the policy layer that triggered it
  *
  * CP25 is the informative one: it moves the fault out of the kernel entirely
  * and into Android's own boot policy, which is a different (and far more
@@ -510,6 +573,38 @@ void va48_beacon_reboot(int cp)
 	va48_beacon(cp);
 }
 
+/*
+ * VA48 R9 FIX: verifiedbootstate=orange → green
+ *
+ * When booting via "fastboot boot" on an unlocked bootloader, ABL/XBL
+ * appends "androidboot.verifiedbootstate=orange" to the kernel command
+ * line.  Several OPLUS/ColorOS native services (security broker,
+ * oplus_guard, and similar early-boot watchmen) read /proc/cmdline during
+ * second-stage init and call sys_reboot() on detecting a non-green state.
+ * This is the most probable cause of the ~10 s reboot observed in round 7:
+ * userspace was well into second-stage (CP22/CP23 lit = 4096+ syscalls),
+ * the reboot was intentional (not a panic -- PANIC_TIMEOUT=0 would hang),
+ * and the timing matches OPLUS verified-boot enforcement exactly.
+ *
+ * boot_command_line[] is a mutable COMMAND_LINE_SIZE-byte char array in
+ * init/main.c; it is writable here because setup_arch() runs before
+ * start_kernel() copies it to saved_command_line.  Patching it here means
+ * every reader of /proc/cmdline (and of the derived
+ * ro.boot.verifiedbootstate property) sees "green" instead of "orange".
+ *
+ * "orange" (6 bytes) is overwritten with "green " (same byte count;
+ * the trailing space is ignored by both the kernel __setup() parser and
+ * by Android init's property importer, which splits on whitespace).
+ */
+static void __init va48_fix_cmdline(void)
+{
+	extern char boot_command_line[];	/* init/main.c */
+	char *p = strstr(boot_command_line, "verifiedbootstate=orange");
+
+	if (p)
+		memcpy(p + 18, "green ", 6);	/* "verifiedbootstate=" = 18 bytes */
+}
+
 void __init __no_sanitize_address setup_arch(char **cmdline_p)
 """ % SPLASH_BASE_C
 
@@ -520,9 +615,9 @@ patch("arch/arm64/kernel/setup.c", [
     # counter needs atomic_t. Both are pulled in indirectly via linux/kernel.h in
     # practice, but relying on transitive includes is exactly the kind of
     # assumption that breaks on the runner rather than here.
-    ("linux/io.h + atomic.h includes",
+    ("linux/io.h + atomic.h + string.h includes",
      "#include <linux/mm.h>\n",
-     "#include <linux/mm.h>\n#include <linux/io.h>\n#include <linux/atomic.h>\n"),
+     "#include <linux/mm.h>\n#include <linux/io.h>\n#include <linux/atomic.h>\n#include <linux/string.h>\n"),
 
     ("beacon helpers + defines", SETUP_FN_OLD, SETUP_FN_NEW),
 
@@ -544,9 +639,9 @@ patch("arch/arm64/kernel/setup.c", [
      "\tbootmem_init();\n\tva48_beacon(4);\n"),
 
     # CP5 -- rest of setup_arch reached
-    ("CP5 after request_standard_resources",
+    ("CP5 + cmdline fix after request_standard_resources",
      "\trequest_standard_resources();\n",
-     "\trequest_standard_resources();\n\tva48_beacon(5);\n"),
+     "\trequest_standard_resources();\n\tva48_beacon(5);\n\tva48_fix_cmdline();\n"),
 ])
 
 # ------------------------------------------------------------------ init/main.c
@@ -725,6 +820,26 @@ patch("kernel/reboot.c", [
      "\tmutex_lock(&system_transition_mutex);\n\tswitch (cmd) {\n",
      "\tva48_beacon_reboot(25);\n"
      "\tmutex_lock(&system_transition_mutex);\n\tswitch (cmd) {\n"),
+
+    # CP28: bare RESTART (kernel_restart(NULL) -- no reason string).
+    # Android PowerManager uses RESTART2; a bare RESTART here usually means
+    # the kernel itself (or a very low-level native process) asked for a
+    # restart without providing a reason.
+    ("CP28 at RESTART case",
+     "\tcase LINUX_REBOOT_CMD_RESTART:\n\t\tkernel_restart(NULL);\n",
+     "\tcase LINUX_REBOOT_CMD_RESTART:\n"
+     "\t\tva48_beacon_reboot(28);\n"
+     "\t\tkernel_restart(NULL);\n"),
+
+    # CP29: RESTART2 (kernel_restart(buffer) -- carries a reason string such
+    # as "bootloop", "recovery", "bootloader", etc.).  Android's PowerManager
+    # reboot() and init's critical-service crash handler both use this path.
+    # If CP29 fires, the reboot was policy-driven from userspace / Android init.
+    ("CP29 at RESTART2 case",
+     "\t\tbuffer[sizeof(buffer) - 1] = '\\0';\n\t\tkernel_restart(buffer);\n",
+     "\t\tbuffer[sizeof(buffer) - 1] = '\\0';\n"
+     "\t\tva48_beacon_reboot(29);\n"
+     "\t\tkernel_restart(buffer);\n"),
 ])
 
 print("-" * 62)
@@ -732,9 +847,10 @@ print("applied=%d expected=%d failed=%d" % (applied, EXPECT, failed))
 if failed or applied != EXPECT:
     print("BEACON PATCH FAILED - refusing to continue")
     sys.exit(1)
-print("beacon OK: CP0 raw-phys, CP1-2 early_ioremap, CP3-27 linear map")
+print("beacon OK: CP0 raw-phys, CP1-2 early_ioremap, CP3-29 linear map")
 print("splash base %s, stride 160 KiB (kernel cluster)" % SPLASH_BASE_C)
 print("kernel cluster CP0-CP20 slots 0-25 (groups of 4, identical to r6/r7)")
 print("progress cluster CP21-CP24 variable thickness (1x/2x/3x/4x of 80 KiB)")
 print("reboot cluster  CP25-CP27 variable thickness (1x/2x/3x of 80 KiB)")
-print("panic block     offset 0x68c000, 5x thickness (~81 rows)")
+print("reason cluster  CP28-CP29 variable thickness (1x/2x of 80 KiB)")
+print("panic block     offset 0x6c0000, 5x thickness (~81 rows)")
