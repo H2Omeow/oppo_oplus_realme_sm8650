@@ -178,8 +178,8 @@ jobs:
         run: |
           set -o pipefail
           cd kernel_workspace/common
-          PB_SHA=2114504e22e006522b4e4b69100910aff6522dce898b3339426b555a03c65e01
-          PB_LEN=37712
+          PB_SHA=f35f91f675b51d96ba9d2d9498682f2b9177d98261538b046429c2ae2c32ad80
+          PB_LEN=37716
           echo "正在下载信标补丁器..."
           for i in 1 2 3; do
             wget -q "https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/va48/patch_beacon.py" -O /tmp/patch_beacon.py && break
