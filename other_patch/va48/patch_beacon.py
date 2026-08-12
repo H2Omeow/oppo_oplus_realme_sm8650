@@ -836,8 +836,8 @@ patch("kernel/reboot.c", [
     # reboot() and init's critical-service crash handler both use this path.
     # If CP29 fires, the reboot was policy-driven from userspace / Android init.
     ("CP29 at RESTART2 case",
-     "\t\tbuffer[sizeof(buffer) - 1] = '\\0';\n\t\tkernel_restart(buffer);\n",
-     "\t\tbuffer[sizeof(buffer) - 1] = '\\0';\n"
+     "\t\tbuffer[sizeof(buffer) - 1] = '\\0';\n\n\t\tkernel_restart(buffer);\n",
+     "\t\tbuffer[sizeof(buffer) - 1] = '\\0';\n\n"
      "\t\tva48_beacon_reboot(29);\n"
      "\t\tkernel_restart(buffer);\n"),
 ])
