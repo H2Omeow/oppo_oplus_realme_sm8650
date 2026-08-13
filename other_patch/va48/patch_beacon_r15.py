@@ -543,6 +543,39 @@ static void __init va48_fix_cmdline(void)
 	p = strstr(boot_command_line, "shutdown_panic=-1");
 	if (p)
 		memcpy(p + 15, "0 ", 2);
+
+	/*
+	 * Patch DT /chosen bootargs in-place so phoenix reads
+	 * hang_oplus_main_on=0 and never starts the HLOS watchdog.
+	 *
+	 * phoenix uses of_find_node_opts_by_path("/chosen") +
+	 * of_property_read_string("bootargs") — it reads directly from
+	 * the live DT blob in memory, NOT from saved_command_line or
+	 * boot_command_line.  The DT property value is a NUL-terminated
+	 * string stored inside the flattened DT; it is writable at this
+	 * point and stays in memory for the lifetime of the kernel.
+	 */
+	{
+		struct device_node *chosen;
+		const char *prop;
+
+		chosen = of_find_node_opts_by_path("/chosen", NULL);
+		if (!chosen)
+			chosen = of_find_node_opts_by_path("/chosen@0", NULL);
+		if (chosen &&
+		    of_property_read_string(chosen, "bootargs", &prop) == 0 &&
+		    prop) {
+			/*
+			 * prop points into the DT blob — cast away const and
+			 * edit in-place.  The string is writable here; GKI
+			 * does not mark DT memory read-only before MMU init.
+			 */
+			char *bp = (char *)prop;
+			char *q = strstr(bp, "hang_oplus_main_on=1");
+			if (q)
+				q[19] = '0';
+		}
+	}
 }
 
 /*
