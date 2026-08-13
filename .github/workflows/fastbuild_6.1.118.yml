@@ -561,6 +561,10 @@ jobs:
           wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/va48/patch_beacon_r12.py
           python3 patch_va48.py
           python3 patch_beacon_r12.py
+          # 切换 defconfig 到 VA_BITS=48（Kconfig choice，必须显式设置）
+          sed -i '/CONFIG_ARM64_VA_BITS_39/d' arch/arm64/configs/gki_defconfig
+          sed -i '/CONFIG_ARM64_VA_BITS_48/d' arch/arm64/configs/gki_defconfig
+          echo "CONFIG_ARM64_VA_BITS_48=y" >> arch/arm64/configs/gki_defconfig
 
       - name: 构建内核
         run: |
