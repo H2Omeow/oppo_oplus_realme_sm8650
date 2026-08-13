@@ -150,7 +150,7 @@ static int va48_log_row;
  * font_vga_8x16, scale=2: 16px wide x 32px tall per glyph, 79 chars/line.
  * BGRA32 pixel: white=0xFFFFFFFF, black=0x00000000.
  */
-static void va48_log_early(const char *msg)
+static void __init va48_log_early(const char *msg)
 {
 	const struct font_desc *font = &font_vga_8x16;
 	const u8 *fdata;
