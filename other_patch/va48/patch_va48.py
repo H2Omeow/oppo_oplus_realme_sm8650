@@ -316,6 +316,24 @@ patch("kernel/module/version.c", [
     ),
 ])
 
+# ---------------------------------------------------------------- J: mmap_rnd_bits
+# VA48 increases ARCH_MMAP_RND_BITS_MAX from 24 (VA39) to 33 (VA48/4K).
+# The kernel's default CONFIG_ARCH_MMAP_RND_BITS (set at Kconfig time) follows
+# the MAX, so mmap_rnd_bits goes from 18 to 33.  This shifts all dynamic library
+# load addresses above 4 GiB.  BoringSSL's FIPS integrity check (and other
+# Android code) assumes libraries load below 4 GiB, causing app_process to
+# die with exit 127 and init to panic.
+# Fix: pin mmap_rnd_bits to 18 (VA39 default) in arch/arm64/mm/mmap.c.
+patch("arch/arm64/mm/mmap.c", [
+    (
+        "J1 pin mmap_rnd_bits to VA39 default 18",
+        "int __ro_after_init mmap_rnd_bits = CONFIG_ARCH_MMAP_RND_BITS;\n",
+        "/* VA48/VA39: pin to VA39 default so libraries load below 4 GiB.\n"
+        " * BoringSSL and Android ART assume load addresses < 4 GiB. */\n"
+        "int __ro_after_init mmap_rnd_bits = 18;\n",
+    ),
+])
+
 # ---------------------------------------------------------------- report
 print("=" * 68)
 for a in applied:
@@ -330,7 +348,7 @@ if failed:
     print("A partially patched tree builds fine and then dies before console output.")
     sys.exit(1)
 
-EXPECT = 12
+EXPECT = 13
 if len(applied) != EXPECT:
     print(f"\nERROR: expected {EXPECT} edits, applied {len(applied)}.")
     sys.exit(1)
