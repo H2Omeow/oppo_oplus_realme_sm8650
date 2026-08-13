@@ -33,7 +33,7 @@ SPLASH_BASE_C   = "0xd5100000UL"
 SPLASH_BASE_ASM = "0xd5100000"
 CP0_BAND_ASM    = "0x20000"
 
-EXPECT  = 29
+EXPECT  = 30
 applied = 0
 failed  = 0
 
@@ -601,15 +601,46 @@ patch("arch/arm64/kernel/setup.c", [
 
 # ----------------------------------------------------------------- init/main.c
 patch("init/main.c", [
-    ("beacon extern decl",
+    ("beacon extern decl + saved_cmdline patcher decl",
      "asmlinkage __visible void __init __no_sanitize_address start_kernel(void)\n",
      "/* VA48 BEACON: defined in arch/arm64/kernel/setup.c */\n"
      "void va48_beacon(int cp);\n\n"
+     "/*\n"
+     " * va48_fix_saved_cmdline - patch saved_command_line after setup_command_line()\n"
+     " * has copied boot_command_line + extra_command_line (bootconfig) into it.\n"
+     " *\n"
+     " * hang_oplus_main_on=1 comes from bootconfig (extra_command_line), NOT from\n"
+     " * the kernel cmdline itself, so patching boot_command_line is ineffective.\n"
+     " * saved_command_line is the merged string that /proc/cmdline exposes and that\n"
+     " * oplus_bsp_dfr_phoenix reads via phx_parse_cmdline().\n"
+     " */\n"
+     "static void __init va48_fix_saved_cmdline(void)\n"
+     "{\n"
+     "\textern char *saved_command_line;\n"
+     "\tchar *p;\n"
+     "\n"
+     "\tif (!saved_command_line)\n"
+     "\t\treturn;\n"
+     "\n"
+     "\t/* Disable phoenix HLOS watchdog hang detection */\n"
+     "\tp = strstr(saved_command_line, \"hang_oplus_main_on=1\");\n"
+     "\tif (p)\n"
+     "\t\tp[19] = '0';\n"
+     "\n"
+     "\t/* Disable phoenix panic-triggered reboot */\n"
+     "\tp = strstr(saved_command_line, \"shutdown_panic=-1\");\n"
+     "\tif (p)\n"
+     "\t\tmemcpy(p + 15, \"0 \", 2);\n"
+     "}\n\n"
      "asmlinkage __visible void __init __no_sanitize_address start_kernel(void)\n"),
 
     ("CP6 after mm_init",
      "\tmm_init();\n",
      "\tmm_init();\n\tva48_beacon(6);\n"),
+
+    ("fix saved_cmdline after setup_command_line",
+     "\tsetup_command_line(command_line);\n",
+     "\tsetup_command_line(command_line);\n\tva48_fix_saved_cmdline();\n"),
 
     ("CP7 after vfs_caches_init",
      "\tvfs_caches_init();\n",
