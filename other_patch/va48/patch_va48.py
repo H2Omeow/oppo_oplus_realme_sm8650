@@ -323,14 +323,14 @@ patch("kernel/module/version.c", [
 # load addresses above 4 GiB.  BoringSSL's FIPS integrity check (and other
 # Android code) assumes libraries load below 4 GiB, causing app_process to
 # die with exit 127 and init to panic.
-# Fix: pin mmap_rnd_bits to 18 (VA39 default) in arch/arm64/mm/mmap.c.
-patch("arch/arm64/mm/mmap.c", [
+# Fix: pin mmap_rnd_bits to 18 (VA39 default) in mm/mmap.c.
+patch("mm/mmap.c", [
     (
         "J1 pin mmap_rnd_bits to VA39 default 18",
-        "int __ro_after_init mmap_rnd_bits = CONFIG_ARCH_MMAP_RND_BITS;\n",
+        "int mmap_rnd_bits __read_mostly = CONFIG_ARCH_MMAP_RND_BITS;\n",
         "/* VA48/VA39: pin to VA39 default so libraries load below 4 GiB.\n"
         " * BoringSSL and Android ART assume load addresses < 4 GiB. */\n"
-        "int __ro_after_init mmap_rnd_bits = 18;\n",
+        "int mmap_rnd_bits __read_mostly = 18;\n",
     ),
 ])
 
