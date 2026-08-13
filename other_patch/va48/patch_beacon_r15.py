@@ -802,6 +802,9 @@ patch("kernel/reboot.c", [
      "\t\tbuffer[sizeof(buffer) - 1] = '\\0';\n\n\t\tkernel_restart(buffer);\n",
      "\t\tbuffer[sizeof(buffer) - 1] = '\\0';\n\n"
      "\t\tva48_beacon_reboot(29);\n"
+     "\t\t/* VA48: log RESTART2 reason string to screen */\n"
+     "\t\t{ extern void va48_beacon_panic(const char *msg);\n"
+     "\t\t  va48_beacon_panic(buffer); }\n"
      "\t\tkernel_restart(buffer);\n"),
 ])
 
