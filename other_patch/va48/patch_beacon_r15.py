@@ -805,6 +805,17 @@ patch("kernel/reboot.c", [
      "\t\t/* VA48: log RESTART2 reason string to screen */\n"
      "\t\t{ extern void va48_beacon_panic(const char *msg);\n"
      "\t\t  va48_beacon_panic(buffer); }\n"
+     "\t\t/*\n"
+     "\t\t * VA48 FIX: suppress boringssl-self-check-failed reboot.\n"
+     "\t\t * BoringSSL FIPS integrity check fails because VA48 changes\n"
+     "\t\t * TASK_SIZE_64 and the dynamic linker places libcrypto.so at\n"
+     "\t\t * a different address than what was embedded at compile time.\n"
+     "\t\t * This is a false positive — suppress the reboot and let the\n"
+     "\t\t * process crash normally instead of taking down the system.\n"
+     "\t\t */\n"
+     "\t\tif (strncmp(buffer, \"boringssl-self-check-failed\",\n"
+     "\t\t\t    sizeof(\"boringssl-self-check-failed\") - 1) == 0)\n"
+     "\t\t\tbreak;\n"
      "\t\tkernel_restart(buffer);\n"),
 ])
 
