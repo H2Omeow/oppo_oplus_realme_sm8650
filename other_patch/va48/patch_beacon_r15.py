@@ -510,18 +510,39 @@ static void __init va48_fix_cmdline(void)
 {
 	extern char boot_command_line[];
 	extern int panic_timeout;
-	char *p = strstr(boot_command_line, "verifiedbootstate=orange");
+	char *p;
 
+	/* verifiedbootstate=orange -> green */
+	p = strstr(boot_command_line, "verifiedbootstate=orange");
 	if (p)
 		memcpy(p + 18, "green ", 6);
 
 	/*
 	 * Override CONFIG_PANIC_TIMEOUT=-1 directly so panic() spins
 	 * forever instead of calling emergency_restart() immediately.
-	 * parse_args() (which would parse "panic=0" from cmdline) runs
-	 * only after setup_arch() returns -- too late for paging_init.
 	 */
 	panic_timeout = 0;
+
+	/*
+	 * Disable phoenix HLOS watchdog hang detection.
+	 * hang_oplus_main_on=1 in bootloader cmdline causes phoenix to
+	 * reboot the device via RESTART2 after 240 s if oplus_main does
+	 * not pet the watchdog -- which never happens on a VA48 kernel
+	 * that the system does not recognise as a "normal" boot.
+	 * Patch the in-RAM copy of boot_command_line to 0 so that
+	 * phoenix_hlos_watchdog_init reads hang_oplus_main_on=0.
+	 */
+	p = strstr(boot_command_line, "hang_oplus_main_on=1");
+	if (p)
+		p[19] = '0';
+
+	/*
+	 * shutdown_panic=-1 in cmdline causes phoenix to treat any
+	 * kernel panic as a reason to reboot immediately.  Set to 0.
+	 */
+	p = strstr(boot_command_line, "shutdown_panic=-1");
+	if (p)
+		memcpy(p + 15, "0 ", 2);
 }
 
 /*
