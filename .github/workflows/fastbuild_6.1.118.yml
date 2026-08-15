@@ -106,6 +106,9 @@ jobs:
       actions: write
       contents: read
     steps:
+      - name: 检出当前构建仓库
+        uses: actions/checkout@v4
+
       - name: 安装环境依赖+初始化源码仓库及llvm-Clang20工具链
         run: |
           rm -rf kernel_workspace
@@ -555,12 +558,24 @@ jobs:
            
       - name: 应用 VA48 用户空间扩展补丁
         run: |
-          echo "正在应用 VA48 用户空间补丁（TASK_SIZE_64=256TiB, beacon r12）..."
+          set -euo pipefail
+          echo "正在应用 VA48 用户空间补丁（TASK_SIZE_64=256TiB, beacon r15j）..."
+          VA48_SHA=2e92cfe55d0e79d0cf60e3c806215aef9bf270597e079bb997141662cee20485
+          BEACON_SHA=c7e27ed6ea7a91c4fd4750c06e8a0ded2fd76c167e1244ced2fafcdcf38091dd
+          LAYOUT_SHA=79d8b75d9a86069bf86f62dec45c42f5c67ca6debe3b9c311ed7c9f853a1ef6b
+          sha256sum -c <(printf '%s  %s\n' "$VA48_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py")
+          sha256sum -c <(printf '%s  %s\n' "$BEACON_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_beacon_r15.py")
+          sha256sum -c <(printf '%s  %s\n' "$LAYOUT_SHA" "$GITHUB_WORKSPACE/other_patch/va48/verify_layout.py")
+          python3 "$GITHUB_WORKSPACE/other_patch/va48/verify_layout.py" | tee "$GITHUB_WORKSPACE/va48-layout.log"
           cd kernel_workspace/common
-          wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/va48/patch_va48.py
-          wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/va48/patch_beacon_r15.py
-          python3 patch_va48.py
-          python3 patch_beacon_r15.py
+          cp "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py" ./patch_va48.py
+          cp "$GITHUB_WORKSPACE/other_patch/va48/patch_beacon_r15.py" ./patch_beacon_r15.py
+          python3 patch_va48.py . 2>&1 | tee va48-patch.log
+          grep -q 'applied=12 failed=0' va48-patch.log
+          grep -q 'all 12 edits applied' va48-patch.log
+          python3 patch_beacon_r15.py . 2>&1 | tee beacon-r15j-patch.log
+          grep -q 'applied=31 expected=31 failed=0' beacon-r15j-patch.log
+          grep -q 'beacon OK' beacon-r15j-patch.log
           # 切换 defconfig 到 VA_BITS=48（Kconfig choice，必须显式设置）
           sed -i '/CONFIG_ARM64_VA_BITS_39/d' arch/arm64/configs/gki_defconfig
           sed -i '/CONFIG_ARM64_VA_BITS_48/d' arch/arm64/configs/gki_defconfig
@@ -637,8 +652,19 @@ jobs:
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig &&
+          set -euo pipefail
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig
+          grep -q '^CONFIG_ARM64_VA_BITS=48$' out/.config
+          grep -q '^CONFIG_PGTABLE_LEVELS=4$' out/.config
+          grep -q '^CONFIG_ARM64_4K_PAGES=y$' out/.config
+          grep -q '^CONFIG_COMPAT=y$' out/.config
+          grep -q '^CONFIG_MODVERSIONS=y$' out/.config
+          grep -q '^CONFIG_ARM64_VA_BITS_48=y$' out/.config
+          grep -q '^# CONFIG_ARM64_VA_BITS_39 is not set$' out/.config
+          cp out/.config "$GITHUB_WORKSPACE/va48-config.log"
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error Image
+          test -s out/arch/arm64/boot/Image
+          test -s out/Module.symvers
           
           # 编译后时间劫持二次校验
           echo "--- 编译后环境时间: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
@@ -740,6 +766,20 @@ jobs:
         with:
           name: ccache-debug-log
           path: ${{ github.workspace }}/kernel_workspace/ccache.log
+          archive: true
+
+      - name: 上传 VA48 构建证据
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: va48-r15j-build-evidence
+          path: |
+            ${{ github.workspace }}/va48-layout.log
+            ${{ github.workspace }}/va48-config.log
+            ${{ github.workspace }}/kernel_workspace/common/va48-patch.log
+            ${{ github.workspace }}/kernel_workspace/common/beacon-r15j-patch.log
+            ${{ github.workspace }}/kernel_workspace/common/out/Module.symvers
+          if-no-files-found: warn
           archive: true
 
       - name: 上传 ZIP 工件

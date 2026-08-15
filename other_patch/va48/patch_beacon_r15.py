@@ -131,6 +131,8 @@ SETUP_FN_NEW = r"""/*
 #define VA48_FB_STRIDE		5056		/* 1264 * 4 bytes, BGRA32 */
 #define VA48_TEXT_ROWS		8
 
+#include <linux/ptrace.h>
+
 bool va48_beacon_linear __read_mostly;
 
 /*
@@ -365,13 +367,39 @@ void va48_beacon_svc(void)
 	}
 }
 
-void va48_beacon_sigfault(void)
+void va48_beacon_sigfault(int signo, int code, unsigned long far,
+				  const char *str)
 {
+	struct pt_regs *regs;
+	char msg[192];
+	bool bssl;
 	static bool done;
+	static bool bssl_done;
 
-	if (done)
-		return;
-	done = true;
+	bssl = strncmp(current->comm, "boringssl_self_", 15) == 0;
+	if (bssl) {
+		if (bssl_done)
+			return;
+		bssl_done = true;
+	} else {
+		if (done)
+			return;
+		done = true;
+	}
+	regs = current_pt_regs();
+	pr_emerg("VA48 SIGFAULT pid=%d comm=%s sig=%d code=%d far=0x%016lx esr=0x%016lx pc=0x%016lx sp=0x%016lx type=%s\n",
+		task_pid_nr(current), current->comm, signo, code, far,
+		current->thread.fault_code, regs ? regs->pc : 0,
+		regs ? regs->sp : 0, str ? str : "?");
+	if (regs) {
+		snprintf(msg, sizeof(msg),
+			 "SIGFAULT pid=%d sig=%d code=%d far=%016lx",
+			 task_pid_nr(current), signo, code, far);
+		va48_log_late(msg);
+		snprintf(msg, sizeof(msg), "ESR=%016lx PC=%016lx SP=%016lx",
+			 current->thread.fault_code, regs->pc, regs->sp);
+		va48_log_late(msg);
+	}
 	va48_beacon(24);
 }
 
@@ -789,11 +817,12 @@ patch("arch/arm64/kernel/traps.c", [
      "\tarm64_show_signal(signo, str);\n",
 
      "/* VA48 BEACON: defined in this directory's setup.c */\n"
-     "void va48_beacon_sigfault(void);\n\n"
+     "void va48_beacon_sigfault(int signo, int code, unsigned long far,\n"
+     "\t\t\t   const char *str);\n\n"
      "void arm64_force_sig_fault(int signo, int code, unsigned long far,\n"
      "\t\t\t   const char *str)\n"
      "{\n"
-     "\tva48_beacon_sigfault();\n"
+     "\tva48_beacon_sigfault(signo, code, far, str);\n"
      "\tarm64_show_signal(signo, str);\n"),
 ])
 

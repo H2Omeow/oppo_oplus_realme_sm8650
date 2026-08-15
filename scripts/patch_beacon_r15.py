@@ -33,7 +33,7 @@ SPLASH_BASE_C   = "0xd5100000UL"
 SPLASH_BASE_ASM = "0xd5100000"
 CP0_BAND_ASM    = "0x20000"
 
-EXPECT  = 29
+EXPECT  = 31
 applied = 0
 failed  = 0
 
@@ -130,6 +130,8 @@ SETUP_FN_NEW = r"""/*
 #define VA48_FB_H		2780
 #define VA48_FB_STRIDE		5056		/* 1264 * 4 bytes, BGRA32 */
 #define VA48_TEXT_ROWS		8
+
+#include <linux/ptrace.h>
 
 bool va48_beacon_linear __read_mostly;
 
@@ -365,13 +367,39 @@ void va48_beacon_svc(void)
 	}
 }
 
-void va48_beacon_sigfault(void)
+void va48_beacon_sigfault(int signo, int code, unsigned long far,
+				  const char *str)
 {
+	struct pt_regs *regs;
+	char msg[192];
+	bool bssl;
 	static bool done;
+	static bool bssl_done;
 
-	if (done)
-		return;
-	done = true;
+	bssl = strncmp(current->comm, "boringssl_self_", 15) == 0;
+	if (bssl) {
+		if (bssl_done)
+			return;
+		bssl_done = true;
+	} else {
+		if (done)
+			return;
+		done = true;
+	}
+	regs = current_pt_regs();
+	pr_emerg("VA48 SIGFAULT pid=%d comm=%s sig=%d code=%d far=0x%016lx esr=0x%016lx pc=0x%016lx sp=0x%016lx type=%s\n",
+		task_pid_nr(current), current->comm, signo, code, far,
+		current->thread.fault_code, regs ? regs->pc : 0,
+		regs ? regs->sp : 0, str ? str : "?");
+	if (regs) {
+		snprintf(msg, sizeof(msg),
+			 "SIGFAULT pid=%d sig=%d code=%d far=%016lx",
+			 task_pid_nr(current), signo, code, far);
+		va48_log_late(msg);
+		snprintf(msg, sizeof(msg), "ESR=%016lx PC=%016lx SP=%016lx",
+			 current->thread.fault_code, regs->pc, regs->sp);
+		va48_log_late(msg);
+	}
 	va48_beacon(24);
 }
 
@@ -498,6 +526,36 @@ void va48_beacon_reboot(int cp)
 	va48_beacon(cp);
 }
 
+void va48_beacon_reason(const char *reason)
+{
+	char msg[192];
+
+	if (!va48_beacon_linear || !reason)
+		return;
+	pr_emerg("VA48 RESTART2 pid=%d tgid=%d comm=%s reason=%s\n",
+		 task_pid_nr(current), task_tgid_nr(current), current->comm,
+		 reason);
+	snprintf(msg, sizeof(msg), "RESTART2 pid=%d comm=%s",
+		 task_pid_nr(current), current->comm);
+	va48_log_late(msg);
+	va48_log_late(reason);
+}
+
+void va48_beacon_exit(long code)
+{
+	char msg[192];
+
+	if (!va48_beacon_linear)
+		return;
+	if (strncmp(current->comm, "boringssl_self_", 15) != 0)
+		return;
+	pr_emerg("VA48 BSSL exit pid=%d code=0x%lx comm=%s\n",
+		 task_pid_nr(current), code, current->comm);
+	snprintf(msg, sizeof(msg), "BSSL exit pid=%d code=0x%lx",
+		 task_pid_nr(current), code);
+	va48_log_late(msg);
+}
+
 /*
  * VA48 R9  FIX: verifiedbootstate=orange -> green
  * VA48 R14 FIX: set panic_timeout=0 directly in C (overrides
@@ -510,7 +568,6 @@ static void __init va48_fix_cmdline(void)
 {
 	extern char boot_command_line[];
 	extern int panic_timeout;
-	extern int mmap_rnd_bits, mmap_rnd_compat_bits;
 	char *p;
 
 	/* verifiedbootstate=orange -> green */
@@ -523,16 +580,6 @@ static void __init va48_fix_cmdline(void)
 	 * forever instead of calling emergency_restart() immediately.
 	 */
 	panic_timeout = 0;
-
-	/*
-	 * VA48/VA39: Force mmap_rnd_bits to VA39 defaults.
-	 * VA48 increases ARCH_MMAP_RND_BITS_MAX from 24 to 33, which makes
-	 * CONFIG_ARCH_MMAP_RND_BITS default to 33, causing all dynamic
-	 * libraries to load above 4 GiB.  BoringSSL FIPS integrity check
-	 * and Android ART assume libraries load below 4 GiB.
-	 */
-	mmap_rnd_bits = 18;         /* VA39 default for 4K pages */
-	mmap_rnd_compat_bits = 8;   /* 32-bit compat default */
 
 	/*
 	 * Disable phoenix HLOS watchdog hang detection.
@@ -770,11 +817,12 @@ patch("arch/arm64/kernel/traps.c", [
      "\tarm64_show_signal(signo, str);\n",
 
      "/* VA48 BEACON: defined in this directory's setup.c */\n"
-     "void va48_beacon_sigfault(void);\n\n"
+     "void va48_beacon_sigfault(int signo, int code, unsigned long far,\n"
+     "\t\t\t   const char *str);\n\n"
      "void arm64_force_sig_fault(int signo, int code, unsigned long far,\n"
      "\t\t\t   const char *str)\n"
      "{\n"
-     "\tva48_beacon_sigfault();\n"
+     "\tva48_beacon_sigfault(signo, code, far, str);\n"
      "\tarm64_show_signal(signo, str);\n"),
 ])
 
@@ -783,10 +831,13 @@ patch("kernel/reboot.c", [
     ("CP27 + reboot beacon decl at emergency_restart",
      "void emergency_restart(void)\n{\n\tkmsg_dump(KMSG_DUMP_EMERG);\n",
      "/* VA48 BEACON: defined in arch/arm64/kernel/setup.c */\n"
+     "#include <linux/panic.h>\n"
      "#ifdef CONFIG_ARM64\n"
      "void va48_beacon_reboot(int cp);\n"
+     "void va48_beacon_reason(const char *reason);\n"
      "#else\n"
      "static inline void va48_beacon_reboot(int cp) { }\n"
+     "static inline void va48_beacon_reason(const char *reason) { }\n"
      "#endif\n\n"
      "void emergency_restart(void)\n{\n"
      "\tva48_beacon_reboot(27);\n"
@@ -813,21 +864,42 @@ patch("kernel/reboot.c", [
      "\t\tbuffer[sizeof(buffer) - 1] = '\\0';\n\n\t\tkernel_restart(buffer);\n",
      "\t\tbuffer[sizeof(buffer) - 1] = '\\0';\n\n"
      "\t\tva48_beacon_reboot(29);\n"
-     "\t\t/* VA48: log RESTART2 reason string to screen */\n"
-     "\t\t{ extern void va48_beacon_panic(const char *msg);\n"
-     "\t\t  va48_beacon_panic(buffer); }\n"
+     "\t\tva48_beacon_reason(buffer);\n"
      "\t\t/*\n"
-     "\t\t * VA48 FIX: suppress boringssl-self-check-failed reboot.\n"
-     "\t\t * BoringSSL FIPS integrity check fails because VA48 changes\n"
-     "\t\t * TASK_SIZE_64 and the dynamic linker places libcrypto.so at\n"
-     "\t\t * a different address than what was embedded at compile time.\n"
-     "\t\t * This is a false positive — suppress the reboot and let the\n"
-     "\t\t * process crash normally instead of taking down the system.\n"
+     "\t\t * VA48 r15j: on boringssl self-check failure do NOT return to\n"
+     "\t\t * init (that would make init abort() and produce the misleading\n"
+     "\t\t * \"Attempted to kill init!\" panic).  panic() here with\n"
+     "\t\t * panic_timeout=0 so the screen freezes on the real first cause:\n"
+     "\t\t * caller pid/comm + reason already rendered by va48_beacon_reason.\n"
      "\t\t */\n"
      "\t\tif (strncmp(buffer, \"boringssl-self-check-failed\",\n"
      "\t\t\t    sizeof(\"boringssl-self-check-failed\") - 1) == 0)\n"
-     "\t\t\tbreak;\n"
+     "\t\t\tpanic(\"va48: boringssl self-check-failed\");\n"
      "\t\tkernel_restart(buffer);\n"),
+])
+
+# ---------------------------------------------------------------- kernel/exit.c
+# Record the real exit code of boringssl_self_test processes so we can see
+# exactly which self-test failed and with what status (0 = success).
+patch("kernel/exit.c", [
+    ("va48_beacon_exit decl + call in do_exit",
+     "void __noreturn do_exit(long code)\n{\n"
+     "\tstruct task_struct *tsk = current;\n"
+     "\tint group_dead;\n\n"
+     "\tWARN_ON(irqs_disabled());\n\n"
+     "\tsynchronize_group_exit(tsk, code);\n",
+     "/* VA48 BEACON: defined in arch/arm64/kernel/setup.c */\n"
+     "#ifdef CONFIG_ARM64\n"
+     "void va48_beacon_exit(long code);\n"
+     "#else\n"
+     "static inline void va48_beacon_exit(long code) { }\n"
+     "#endif\n\n"
+     "void __noreturn do_exit(long code)\n{\n"
+     "\tstruct task_struct *tsk = current;\n"
+     "\tint group_dead;\n\n"
+     "\tWARN_ON(irqs_disabled());\n\n"
+     "\tsynchronize_group_exit(tsk, code);\n"
+     "\tva48_beacon_exit(code);\n"),
 ])
 
 # -------------------------------------------------------- arch/arm64/mm/mmu.c
