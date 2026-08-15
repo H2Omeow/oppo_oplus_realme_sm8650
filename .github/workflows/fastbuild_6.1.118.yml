@@ -561,7 +561,7 @@ jobs:
           set -euo pipefail
           echo "正在应用 VA48 用户空间补丁（TASK_SIZE_64=256TiB, beacon r15j）..."
           VA48_SHA=2e92cfe55d0e79d0cf60e3c806215aef9bf270597e079bb997141662cee20485
-          BEACON_SHA=c7e27ed6ea7a91c4fd4750c06e8a0ded2fd76c167e1244ced2fafcdcf38091dd
+          BEACON_SHA=26402f5b4ce6d1eb7bd1ce6763c2dce6a019001e6794bac484392189e31f46db
           LAYOUT_SHA=79d8b75d9a86069bf86f62dec45c42f5c67ca6debe3b9c311ed7c9f853a1ef6b
           sha256sum -c <(printf '%s  %s\n' "$VA48_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py")
           sha256sum -c <(printf '%s  %s\n' "$BEACON_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_beacon_r15.py")
