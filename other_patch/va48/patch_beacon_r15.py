@@ -543,34 +543,12 @@ void va48_beacon_reason(const char *reason)
 
 void va48_beacon_exit(long code)
 {
-	char msg[192];
-	struct pt_regs *regs;
-
 	if (!va48_beacon_linear)
 		return;
 	if (strncmp(current->comm, "boringssl_self_", 15) != 0)
 		return;
 	pr_emerg("VA48 BSSL exit pid=%d code=0x%lx comm=%s\n",
 		 task_pid_nr(current), code, current->comm);
-	snprintf(msg, sizeof(msg), "BSSL exit pid=%d comm=%s code=0x%lx",
-		 task_pid_nr(current), current->comm, code);
-	va48_log_late(msg);
-
-	if (code == 4 || code == 7 || code == 11) {
-		regs = task_pt_regs(current);
-
-		snprintf(msg, sizeof(msg),
-			 "BSSL fault far=%016lx esr=%016lx",
-			 current->thread.fault_address,
-			 current->thread.fault_code);
-		va48_log_late(msg);
-
-		snprintf(msg, sizeof(msg),
-			 "BSSL fault pc=%016lx sp=%016lx",
-			 regs ? regs->pc : 0,
-			 regs ? regs->sp : 0);
-		va48_log_late(msg);
-	}
 }
 
 /*
