@@ -110,6 +110,15 @@ NOT A BUG (checked, left alone)
                 check_version() and are rejected with -ENOEXEC.  No UFS, no
                 SMMU, no /data -> first splash then reset.  CONFIG_MODVERSIONS
                 stays =y so vermagic still matches in same_magic().
+  J processor.h : DEFAULT_MAP_WINDOW_64 uses VA_BITS not VA_BITS_MIN.
+                With VA_BITS_MIN=39, DEFAULT_MAP_WINDOW_64 = 512 GiB, so
+                mmap_base() = STACK_TOP - gap - rnd can UNDERFLOW when gap+rnd
+                is large, yielding a negative (kernel-space) address.  This was
+                observed as mmap_base=0xfffffeb924017000 in pid 1436
+                boringssl_self_test, causing SIGSEGV.  Use VA_BITS (48) ->
+                DEFAULT_MAP_WINDOW = 128 TiB, providing sufficient headroom.
+                EAC's MAP_FIXED hints above 128 TiB still succeed via
+                arch_get_mmap_end() returning TASK_SIZE_64 (256 TiB).
 
 Run from the kernel source root:  python3 patch_va48.py [tree_root]
 Exits non-zero if ANY anchor is missing (never silently half-patches).
@@ -288,6 +297,22 @@ patch("arch/arm64/mm/mmu.c", [
     ),
 ])
 
+# ---------------------------------------------------------------- J: processor.h
+patch("arch/arm64/include/asm/processor.h", [
+    (
+        "J1 DEFAULT_MAP_WINDOW_64 uses VA_BITS not VA_BITS_MIN",
+        "#define DEFAULT_MAP_WINDOW_64\t(UL(1) << VA_BITS_MIN)\n",
+        "/*\n"
+        " * VA48/VA39: mmap_base() = STACK_TOP - gap - rnd, and STACK_TOP_MAX =\n"
+        " * DEFAULT_MAP_WINDOW_64.  With VA_BITS_MIN=39 -> DEFAULT_MAP_WINDOW=512GiB,\n"
+        " * large gap+rnd causes underflow -> negative mmap_base (kernel address!).\n"
+        " * Use VA_BITS (48) here so DEFAULT_MAP_WINDOW = 128 TiB, enough headroom.\n"
+        " * EAC's MAP_FIXED hints above this still succeed via arch_get_mmap_end().\n"
+        " */\n"
+        "#define DEFAULT_MAP_WINDOW_64\t(UL(1) << VA_BITS)\n",
+    ),
+])
+
 # ---------------------------------------------------------------- G: version.c
 patch("kernel/module/version.c", [
     (
@@ -330,7 +355,7 @@ if failed:
     print("A partially patched tree builds fine and then dies before console output.")
     sys.exit(1)
 
-EXPECT = 12
+EXPECT = 13
 if len(applied) != EXPECT:
     print(f"\nERROR: expected {EXPECT} edits, applied {len(applied)}.")
     sys.exit(1)

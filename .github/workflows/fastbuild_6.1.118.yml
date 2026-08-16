@@ -561,7 +561,7 @@ jobs:
           set -euo pipefail
           echo "正在应用 VA48 用户空间补丁（TASK_SIZE_64=256TiB，VA39 内核布局）..."
           echo "正在应用 VA48 beacon r15n（增强 BoringSSL 诊断）..."
-          VA48_SHA=2e92cfe55d0e79d0cf60e3c806215aef9bf270597e079bb997141662cee20485
+          VA48_SHA=f2041b63ff88e10d66aca123ccf40a000243505ae2399eac1e70a464a706e4a4
           BEACON_SHA=a82484fc5c4ce3621d18d22b10cdef58e51847edb43da456ebb8d8e37723e1bb
           LAYOUT_SHA=79d8b75d9a86069bf86f62dec45c42f5c67ca6debe3b9c311ed7c9f853a1ef6b
           sha256sum -c <(printf '%s  %s\n' "$VA48_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py")
@@ -572,7 +572,7 @@ jobs:
           cp "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py" ./patch_va48.py
           cp "$GITHUB_WORKSPACE/other_patch/va48/patch_beacon_r15n.py" ./patch_beacon_r15n.py
           python3 patch_va48.py . 2>&1 | tee va48-patch.log
-          grep -q 'applied=12 failed=0' va48-patch.log
+          grep -q 'applied=13 failed=0' va48-patch.log
           grep -q 'all 12 edits applied' va48-patch.log
           python3 patch_beacon_r15n.py . 2>&1 | tee beacon-r15n-patch.log
           grep -q 'applied=31 expected=31 failed=0' beacon-r15n-patch.log
