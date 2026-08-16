@@ -110,15 +110,17 @@ NOT A BUG (checked, left alone)
                 check_version() and are rejected with -ENOEXEC.  No UFS, no
                 SMMU, no /data -> first splash then reset.  CONFIG_MODVERSIONS
                 stays =y so vermagic still matches in same_magic().
-  J processor.h : DEFAULT_MAP_WINDOW_64 uses VA_BITS not VA_BITS_MIN.
+  J mm/util.c   : Clamp mmap_base underflow in arch_pick_mmap_layout().
                 With VA_BITS_MIN=39, DEFAULT_MAP_WINDOW_64 = 512 GiB, so
                 mmap_base() = STACK_TOP - gap - rnd can UNDERFLOW when gap+rnd
                 is large, yielding a negative (kernel-space) address.  This was
                 observed as mmap_base=0xfffffeb924017000 in pid 1436
-                boringssl_self_test, causing SIGSEGV.  Use VA_BITS (48) ->
-                DEFAULT_MAP_WINDOW = 128 TiB, providing sufficient headroom.
-                EAC's MAP_FIXED hints above 128 TiB still succeed via
-                arch_get_mmap_end() returning TASK_SIZE_64 (256 TiB).
+                boringssl_self_test, causing SIGSEGV.  Instead of widening
+                DEFAULT_MAP_WINDOW (which would affect all processes), clamp
+                the result: if mmap_base >= TASK_SIZE_64, reset to
+                TASK_SIZE_64 / 4 (64 TiB).  Keeps default mmap window at
+                512 GiB (preserving VA39 compatibility) while preventing
+                kernel-address underflow.
 
 Run from the kernel source root:  python3 patch_va48.py [tree_root]
 Exits non-zero if ANY anchor is missing (never silently half-patches).
@@ -297,19 +299,20 @@ patch("arch/arm64/mm/mmu.c", [
     ),
 ])
 
-# ---------------------------------------------------------------- J: processor.h
-patch("arch/arm64/include/asm/processor.h", [
+# ---------------------------------------------------------------- J: util.c
+patch("mm/util.c", [
     (
-        "J1 DEFAULT_MAP_WINDOW_64 uses VA_BITS not VA_BITS_MIN",
-        "#define DEFAULT_MAP_WINDOW_64\t(UL(1) << VA_BITS_MIN)\n",
-        "/*\n"
-        " * VA48/VA39: mmap_base() = STACK_TOP - gap - rnd, and STACK_TOP_MAX =\n"
-        " * DEFAULT_MAP_WINDOW_64.  With VA_BITS_MIN=39 -> DEFAULT_MAP_WINDOW=512GiB,\n"
-        " * large gap+rnd causes underflow -> negative mmap_base (kernel address!).\n"
-        " * Use VA_BITS (48) here so DEFAULT_MAP_WINDOW = 128 TiB, enough headroom.\n"
-        " * EAC's MAP_FIXED hints above this still succeed via arch_get_mmap_end().\n"
-        " */\n"
-        "#define DEFAULT_MAP_WINDOW_64\t(UL(1) << VA_BITS)\n",
+        "J1 clamp mmap_base underflow",
+        "\tmm->mmap_base = mmap_base(random_factor, rlim_stack);\n",
+        "\tmm->mmap_base = mmap_base(random_factor, rlim_stack);\n"
+        "\t/* VA48/VA39: With VA_BITS_MIN=39, DEFAULT_MAP_WINDOW_64=512GiB, so\n"
+        "\t * STACK_TOP is only 512GiB.  If gap+rnd (from arch_mmap_rnd()) is\n"
+        "\t * large, mmap_base() = STACK_TOP - gap - rnd can underflow into\n"
+        "\t * kernel address space (0xffffff...).  Observed: pid 1436\n"
+        "\t * boringssl_self_test got mmap_base=0xfffffeb924017000 -> SIGSEGV.\n"
+        "\t * Clamp to a safe minimum (TASK_SIZE_64 / 4 = 64 TiB). */\n"
+        "\tif (mm->mmap_base >= TASK_SIZE_64)\n"
+        "\t\tmm->mmap_base = TASK_SIZE_64 / 4;\n",
     ),
 ])
 
