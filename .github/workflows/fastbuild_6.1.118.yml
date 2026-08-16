@@ -573,7 +573,7 @@ jobs:
           cp "$GITHUB_WORKSPACE/other_patch/va48/patch_beacon_r15n.py" ./patch_beacon_r15n.py
           python3 patch_va48.py . 2>&1 | tee va48-patch.log
           grep -q 'applied=13 failed=0' va48-patch.log
-          grep -q 'all 12 edits applied' va48-patch.log
+          grep -q 'all 13 edits applied' va48-patch.log
           python3 patch_beacon_r15n.py . 2>&1 | tee beacon-r15n-patch.log
           grep -q 'applied=31 expected=31 failed=0' beacon-r15n-patch.log
           grep -q 'beacon OK' beacon-r15n-patch.log
