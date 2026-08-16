@@ -164,8 +164,19 @@ jobs:
             echo "  重试 $i ..."; sleep 3
           done
           test -s /tmp/patch_va48.py || { echo "::error::VA48 补丁器下载失败"; exit 1; }
-          echo "补丁器 sha256: $(sha256sum /tmp/patch_va48.py | cut -d' ' -f1)"
+          VA48_SHA=2e92cfe55d0e79d0cf60e3c806215aef9bf270597e079bb997141662cee20485
+          got_sha=$(sha256sum /tmp/patch_va48.py | cut -d' ' -f1)
+          echo "补丁器 sha256: $got_sha"
+          test "$got_sha" = "$VA48_SHA" || { echo "::error::VA48 补丁器指纹不符"; exit 1; }
           python3 /tmp/patch_va48.py .
+          if grep -RInE 'va48_beacon|va48_fix_cmdline|VA48 BEACON' \
+              arch/arm64/kernel/head.S arch/arm64/kernel/setup.c \
+              arch/arm64/kernel/syscall.c arch/arm64/kernel/traps.c \
+              arch/arm64/mm/mmu.c init/main.c kernel/exit.c \
+              kernel/panic.c kernel/reboot.c; then
+            echo '::error::发布源码意外包含 VA48 framebuffer beacon 注入'
+            exit 1
+          fi
           echo "--- 补丁后关键行核对 ---"
           grep -n 'KERNEL_VA_BITS' arch/arm64/include/asm/memory.h
           grep -n 'linear_region_size =' arch/arm64/mm/init.c
@@ -173,59 +184,6 @@ jobs:
           grep -n 'GENMASK(VA_BITS - 1, 0)' arch/arm64/mm/mmu.c
           grep -cn 'IS_ENABLED(CONFIG_ARM64_16K_PAGES)' arch/arm64/mm/mmu.c || true
           grep -n 'return 1;' kernel/module/version.c | head -3
-
-      - name: 注入启动信标 (splash 帧缓冲进度条)
-        run: |
-          set -o pipefail
-          cd kernel_workspace/common
-          PB_SHA=53b239fcb5b9c5c301c22f2c650cc6df5cde7b0115e3197b66454cea8af0c206
-          PB_LEN=41972
-          echo "正在下载信标补丁器..."
-          for i in 1 2 3; do
-            wget -q "https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/va48/patch_beacon_r11.py" -O /tmp/patch_beacon.py && break
-            echo "  重试 $i ..."; sleep 3
-          done
-          test -s /tmp/patch_beacon.py || { echo "::error::信标补丁器下载失败"; exit 1; }
-          got_sha=$(sha256sum /tmp/patch_beacon.py | cut -d' ' -f1)
-          got_len=$(stat -c %s /tmp/patch_beacon.py)
-          echo "信标补丁器 sha256: $got_sha ($got_len 字节)"
-          if [ "$got_sha" != "$PB_SHA" ] || [ "$got_len" != "$PB_LEN" ]; then
-            echo "::error::信标补丁器指纹不符, 期望 $PB_SHA / $PB_LEN 字节"
-            exit 1
-          fi
-          python3 /tmp/patch_beacon.py . 2>&1 | tee /tmp/beacon.log
-          grep -q 'applied=27 expected=27 failed=0' /tmp/beacon.log || { echo "::error::信标补丁数不符, 需要 27/27"; exit 1; }
-          echo "--- r11 探针核对 ---"
-          grep -n 'VA48 BEACON CP0' arch/arm64/kernel/head.S
-          echo "setup.c  va48_beacon 出现次数: $(grep -c va48_beacon arch/arm64/kernel/setup.c)"
-          echo "main.c   va48_beacon 出现次数: $(grep -c va48_beacon init/main.c)"
-          echo "panic.c  va48_beacon 出现次数: $(grep -c va48_beacon kernel/panic.c)"
-          grep -q 'va48_beacon_panic' kernel/panic.c || { echo "::error::panic.c 未注入 panic 标记"; exit 1; }
-          grep -q 'va48_beacon_panic(buf)' kernel/panic.c || { echo "::error::panic.c beacon 调用在 vscnprintf 之前 (buf 未填)"; exit 1; }
-          grep -q 'void va48_beacon_panic(const char \*msg)' arch/arm64/kernel/setup.c || { echo "::error::setup.c 缺少 va48_beacon_panic(const char *msg) 定义"; exit 1; }
-          grep -q 'va48_encode_pmsg' arch/arm64/kernel/setup.c || { echo "::error::setup.c 缺少 va48_encode_pmsg"; exit 1; }
-          grep -qE '^#define VA48_PMSG_START' arch/arm64/kernel/setup.c || { echo "::error::setup.c 缺少 VA48_PMSG_START"; exit 1; }
-          echo "--- r11 用户态 + reboot 探针核对 ---"
-          grep -q 'va48_beacon_svc();' arch/arm64/kernel/syscall.c || { echo "::error::syscall.c 未注入 CP22/CP23 钩子"; exit 1; }
-          grep -q 'va48_beacon_sigfault();' arch/arm64/kernel/traps.c || { echo "::error::traps.c 未注入 CP24 钩子"; exit 1; }
-          grep -q 'va48_beacon(21);' init/main.c || { echo "::error::main.c 未注入 CP21"; exit 1; }
-          grep -q 'void va48_beacon_svc(void)$' arch/arm64/kernel/setup.c || { echo "::error::setup.c 缺少 va48_beacon_svc 定义"; exit 1; }
-          grep -q 'void va48_beacon_sigfault(void)$' arch/arm64/kernel/setup.c || { echo "::error::setup.c 缺少 va48_beacon_sigfault 定义"; exit 1; }
-          grep -q 'atomic_t va48_svc_count' arch/arm64/kernel/setup.c || { echo "::error::CP22 计数器不是 atomic_t (竞态会反转诊断)"; exit 1; }
-          grep -qE '^#define VA48_PANIC_OFF[[:space:]]+0x06c0000UL$' arch/arm64/kernel/setup.c || { echo "::error::r9 setup.c 缺少正确的 VA48_PANIC_OFF 定义 (期望 0x06c0000)"; exit 1; }
-          echo "--- r11 reboot 探针核对 ---"
-          grep -q 'va48_beacon_reboot(25)' kernel/reboot.c || { echo "::error::reboot.c 未注入 CP25 (reboot syscall)"; exit 1; }
-          grep -q 'va48_beacon_reboot(26)' kernel/reboot.c || { echo "::error::reboot.c 未注入 CP26 (kernel_restart)"; exit 1; }
-          grep -q 'va48_beacon_reboot(27)' kernel/reboot.c || { echo "::error::reboot.c 未注入 CP27 (emergency_restart)"; exit 1; }
-          grep -q 'va48_beacon_reboot(28)' kernel/reboot.c || { echo "::error::reboot.c 未注入 CP28 (RESTART)"; exit 1; }
-          grep -q 'va48_beacon_reboot(29)' kernel/reboot.c || { echo "::error::reboot.c 未注入 CP29 (RESTART2)"; exit 1; }
-          grep -q 'void va48_beacon_reboot(int cp)' arch/arm64/kernel/setup.c || { echo "::error::setup.c 缺少 va48_beacon_reboot 定义"; exit 1; }
-          grep -q 'va48_fix_cmdline()' arch/arm64/kernel/setup.c || { echo "::error::setup.c 缺少 va48_fix_cmdline 调用"; exit 1; }
-          grep -q 'verifiedbootstate=orange' arch/arm64/kernel/setup.c || { echo "::error::setup.c 缺少 verifiedbootstate orange→green 补丁"; exit 1; }
-          echo "r11 reboot 探针全部就位 (CP25-CP29)"
-          echo "用户态探针全部就位"
-          awk '/va48_beacon[a-z_]*\(.*\)$/ && !/;/ { fn=$0; init=($0 ~ /__init/) } /early_io(remap|unmap)/ { if (fn != "" && !init) { print "::error::非 __init 函数引用 .init.text: " fn; bad=1 } } /^}/ { fn=""; init=0 } END { exit bad?1:0 }' arch/arm64/kernel/setup.c || exit 1
-          echo "节区安全检查通过: 无非 __init 函数引用 early_ioremap"
 
       - name: 配置ccache目录
         run: |

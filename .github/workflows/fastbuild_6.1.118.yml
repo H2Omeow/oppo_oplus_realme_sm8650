@@ -559,23 +559,27 @@ jobs:
       - name: 应用 VA48 用户空间扩展补丁
         run: |
           set -euo pipefail
-          echo "正在应用 VA48 用户空间补丁（TASK_SIZE_64=256TiB, beacon r15j）..."
+          echo "正在应用 VA48 用户空间补丁（TASK_SIZE_64=256TiB，VA39 内核布局）..."
           VA48_SHA=2e92cfe55d0e79d0cf60e3c806215aef9bf270597e079bb997141662cee20485
-          BEACON_SHA=d1a5e84fce805633c9882dba64971bd8704e3694e865b1def5c7e45557739156
           LAYOUT_SHA=79d8b75d9a86069bf86f62dec45c42f5c67ca6debe3b9c311ed7c9f853a1ef6b
           sha256sum -c <(printf '%s  %s\n' "$VA48_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py")
-          sha256sum -c <(printf '%s  %s\n' "$BEACON_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_beacon_r15.py")
           sha256sum -c <(printf '%s  %s\n' "$LAYOUT_SHA" "$GITHUB_WORKSPACE/other_patch/va48/verify_layout.py")
           python3 "$GITHUB_WORKSPACE/other_patch/va48/verify_layout.py" | tee "$GITHUB_WORKSPACE/va48-layout.log"
           cd kernel_workspace/common
           cp "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py" ./patch_va48.py
-          cp "$GITHUB_WORKSPACE/other_patch/va48/patch_beacon_r15.py" ./patch_beacon_r15.py
           python3 patch_va48.py . 2>&1 | tee va48-patch.log
           grep -q 'applied=12 failed=0' va48-patch.log
           grep -q 'all 12 edits applied' va48-patch.log
-          python3 patch_beacon_r15.py . 2>&1 | tee beacon-r15j-patch.log
-          grep -q 'applied=31 expected=31 failed=0' beacon-r15j-patch.log
-          grep -q 'beacon OK' beacon-r15j-patch.log
+          # 发布内核不得带入任何 framebuffer/beacon 诊断注入；这些代码会
+          # 改变 exit/panic/reboot 路径，并在 IRQ/panic 上下文写硬编码显存。
+          if grep -RInE 'va48_beacon|va48_fix_cmdline|VA48 BEACON' \
+              arch/arm64/kernel/head.S arch/arm64/kernel/setup.c \
+              arch/arm64/kernel/syscall.c arch/arm64/kernel/traps.c \
+              arch/arm64/mm/mmu.c init/main.c kernel/exit.c \
+              kernel/panic.c kernel/reboot.c; then
+            echo '::error::发布源码意外包含 VA48 framebuffer beacon 注入'
+            exit 1
+          fi
           # 切换 defconfig 到 VA_BITS=48（Kconfig choice，必须显式设置）
           sed -i '/CONFIG_ARM64_VA_BITS_39/d' arch/arm64/configs/gki_defconfig
           sed -i '/CONFIG_ARM64_VA_BITS_48/d' arch/arm64/configs/gki_defconfig
@@ -771,13 +775,11 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: va48-r15j-build-evidence
+          name: va48-build-evidence
           path: |
             ${{ github.workspace }}/va48-layout.log
             ${{ github.workspace }}/va48-config.log
             ${{ github.workspace }}/kernel_workspace/common/va48-patch.log
-            ${{ github.workspace }}/kernel_workspace/common/beacon-r15j-patch.log
-            ${{ github.workspace }}/kernel_workspace/common/out/Module.symvers
           if-no-files-found: warn
           archive: true
 
