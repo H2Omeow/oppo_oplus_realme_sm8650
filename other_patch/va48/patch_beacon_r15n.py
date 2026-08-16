@@ -9,7 +9,7 @@ CHANGES VS r15
    - Decode exit code (signal, coredump, exit status)
    - Show full register state (x0-x30, sp, pc, pstate)
    - Show fault registers (FAR, ESR)
-   - Show mm layout (TASK_SIZE, mmap_base, highest_vm_end)
+   - Show mm layout (TASK_SIZE, mmap_base, task_size)
    - Show VMA list (first 10 mappings with permissions)
    - All to BOTH dmesg and framebuffer
 
@@ -405,6 +405,7 @@ void va48_beacon_sigfault(int signo, int code, unsigned long far,
 		if (bssl) {
 			struct mm_struct *mm;
 			struct vm_area_struct *vma;
+			struct vma_iterator vmi;
 			int n;
 
 			snprintf(msg, sizeof(msg), "X0=%016lx X1=%016lx X29=%016lx X30=%016lx",
@@ -415,15 +416,18 @@ void va48_beacon_sigfault(int signo, int code, unsigned long far,
 			mm = current->mm;
 			if (mm) {
 				snprintf(msg, sizeof(msg),
-					 "BSSL mmap_base=%016lx highest_vm_end=%016lx",
-					 mm->mmap_base, mm->highest_vm_end);
+					 "BSSL mmap_base=%016lx task_size=%016lx",
+					 mm->mmap_base, mm->task_size);
 				pr_emerg("VA48 %s\n", msg);
 				va48_log_late(msg);
 
 				va48_log_late("BSSL VMAs (first 6):");
 				n = 0;
 				mmap_read_lock(mm);
-				for (vma = mm->mmap; vma && n < 6; vma = vma->vm_next, n++) {
+				vma_iter_init(&vmi, mm, 0);
+				for_each_vma(vmi, vma) {
+					if (n >= 6)
+						break;
 					snprintf(msg, sizeof(msg),
 						 "  %016lx-%016lx %c%c%c%c",
 						 vma->vm_start, vma->vm_end,
@@ -433,6 +437,7 @@ void va48_beacon_sigfault(int signo, int code, unsigned long far,
 						 (vma->vm_flags & VM_MAYSHARE) ? 's' : 'p');
 					pr_emerg("VA48 %s\n", msg);
 					va48_log_late(msg);
+					n++;
 				}
 				mmap_read_unlock(mm);
 			}
@@ -636,23 +641,22 @@ void va48_beacon_exit(long code)
 	/* Show mm layout */
 	mm = current->mm;
 	if (mm) {
+		struct vma_iterator vmi;
+
 		snprintf(msg, sizeof(msg),
-			 "  TASK_SIZE=%016lx mmap_base=%016lx",
-			 (unsigned long)TASK_SIZE, mm->mmap_base);
+			 "  TASK_SIZE=%016lx mmap_base=%016lx task_size=%016lx",
+			 (unsigned long)TASK_SIZE, mm->mmap_base, mm->task_size);
 		pr_emerg("VA48 %s\\n", msg);
 		va48_log_late(msg);
 
-		snprintf(msg, sizeof(msg),
-			 "  highest_vm_end=%016lx",
-			 mm->highest_vm_end);
-		pr_emerg("VA48 %s\\n", msg);
-		va48_log_late(msg);
-
-		/* Show first few VMAs */
+		/* Show first few VMAs using VMA iterator (6.1+ API) */
 		va48_log_late("  VMAs (first 8):");
 		n = 0;
 		mmap_read_lock(mm);
-		for (vma = mm->mmap; vma && n < 8; vma = vma->vm_next, n++) {
+		vma_iter_init(&vmi, mm, 0);
+		for_each_vma(vmi, vma) {
+			if (n >= 8)
+				break;
 			snprintf(msg, sizeof(msg),
 				 "    %016lx-%016lx %c%c%c%c",
 				 vma->vm_start, vma->vm_end,
@@ -662,9 +666,10 @@ void va48_beacon_exit(long code)
 				 (vma->vm_flags & VM_MAYSHARE) ? 's' : 'p');
 			pr_emerg("VA48 %s\\n", msg);
 			va48_log_late(msg);
+			n++;
 		}
 		mmap_read_unlock(mm);
-		if (vma) {
+		if (n >= 8) {
 			va48_log_late("    (more VMAs not shown)");
 		}
 	}
