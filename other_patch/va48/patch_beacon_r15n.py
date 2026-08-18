@@ -105,11 +105,14 @@ SETUP_FN_NEW = r"""/*
  *  2. va48_beacon_sigfault: same detailed diagnostics
  *  3. reboot.c RESTART2: NO panic(), just log and restart
  *  4. All diagnostics to BOTH dmesg (pr_emerg) and framebuffer
+ *  5. Extended process tracking: init, servicemanager, zygote, system_server
+ *  6. Periodic heartbeats at 8k/16k/32k syscalls with process snapshots
  */
 #include <linux/font.h>
 #include <linux/sched/mm.h>
 #include <linux/sched/signal.h>
 #include <linux/mm.h>
+#include <linux/sched.h>
 
 #define VA48_SPLASH_BASE	""" + SPLASH_BASE_C + r"""
 
@@ -346,14 +349,19 @@ void va48_beacon(int cp)
 }
 
 #define VA48_SVC_ALIVE		4096
+#define VA48_SVC_HEARTBEAT_1	8192
+#define VA48_SVC_HEARTBEAT_2	16384
+#define VA48_SVC_HEARTBEAT_3	32768
 static atomic_t va48_svc_count = ATOMIC_INIT(0);
 static bool va48_svc_first, va48_svc_alive;
+static bool va48_hb1, va48_hb2, va48_hb3;
 
 void va48_beacon_svc(void)
 {
 	int n;
+	char msg[128];
 
-	if (likely(va48_svc_alive))
+	if (likely(va48_hb3))
 		return;
 
 	n = atomic_inc_return(&va48_svc_count);
@@ -362,9 +370,50 @@ void va48_beacon_svc(void)
 		va48_svc_first = true;
 		va48_beacon(22);
 	}
-	if (unlikely(n >= VA48_SVC_ALIVE)) {
+	if (unlikely(n >= VA48_SVC_ALIVE && !va48_svc_alive)) {
 		va48_svc_alive = true;
 		va48_beacon(23);
+	}
+
+	/* Heartbeat: report system state at milestones */
+	if (unlikely(n == VA48_SVC_HEARTBEAT_1 && !va48_hb1)) {
+		struct task_struct *p;
+		int cnt = 0;
+		va48_hb1 = true;
+		snprintf(msg, sizeof(msg), "HB1: %d syscalls, pid=%d comm=%s",
+			 n, task_pid_nr(current), current->comm);
+		va48_log_late(msg);
+
+		/* List key processes */
+		va48_log_late("Key processes:");
+		rcu_read_lock();
+		for_each_process(p) {
+			if (strcmp(p->comm, "init") == 0 ||
+			    strcmp(p->comm, "servicemanager") == 0 ||
+			    strcmp(p->comm, "hwservicemanage") == 0 ||
+			    strncmp(p->comm, "zygote", 6) == 0 ||
+			    strcmp(p->comm, "system_server") == 0 ||
+			    strcmp(p->comm, "surfaceflinger") == 0) {
+				snprintf(msg, sizeof(msg), "  %s pid=%d state=%ld",
+					 p->comm, task_pid_nr(p), p->__state);
+				va48_log_late(msg);
+				if (++cnt >= 12)
+					break;
+			}
+		}
+		rcu_read_unlock();
+	}
+	if (unlikely(n == VA48_SVC_HEARTBEAT_2 && !va48_hb2)) {
+		va48_hb2 = true;
+		snprintf(msg, sizeof(msg), "HB2: %d syscalls, pid=%d comm=%s",
+			 n, task_pid_nr(current), current->comm);
+		va48_log_late(msg);
+	}
+	if (unlikely(n == VA48_SVC_HEARTBEAT_3 && !va48_hb3)) {
+		va48_hb3 = true;
+		snprintf(msg, sizeof(msg), "HB3: %d syscalls, pid=%d comm=%s",
+			 n, task_pid_nr(current), current->comm);
+		va48_log_late(msg);
 	}
 }
 
@@ -591,10 +640,25 @@ void va48_beacon_exit(long code)
 	struct vm_area_struct *vma;
 	char msg[200];
 	int sig, coredump, status, n;
+	const char *comm = current->comm;
+	bool trace_this = false;
 
 	if (!va48_beacon_linear)
 		return;
-	if (strncmp(current->comm, "boringssl_self_", 15) != 0)
+
+	/* Trace key Android processes: init, core services, and BoringSSL */
+	if (strncmp(comm, "boringssl_self_", 15) == 0 ||
+	    strcmp(comm, "init") == 0 ||
+	    strcmp(comm, "servicemanager") == 0 ||
+	    strcmp(comm, "hwservicemanage") == 0 ||
+	    strcmp(comm, "vndservicemanag") == 0 ||
+	    strncmp(comm, "zygote", 6) == 0 ||
+	    strcmp(comm, "system_server") == 0 ||
+	    strcmp(comm, "surfaceflinger") == 0 ||
+	    strcmp(comm, "logd") == 0)
+		trace_this = true;
+
+	if (!trace_this)
 		return;
 
 	/* Decode exit code: low 7 bits = signal, bit 7 = coredump, high byte = exit status */
@@ -603,8 +667,8 @@ void va48_beacon_exit(long code)
 	status   = (code >> 8) & 0xff;
 
 	snprintf(msg, sizeof(msg),
-		 "BSSL EXIT pid=%d comm=%s code=0x%lx sig=%d core=%d status=%d",
-		 task_pid_nr(current), current->comm, code, sig, coredump, status);
+		 "PROC EXIT pid=%d comm=%s code=0x%lx sig=%d core=%d status=%d",
+		 task_pid_nr(current), comm, code, sig, coredump, status);
 	pr_emerg("VA48 %s\\n", msg);
 	va48_log_late(msg);
 
