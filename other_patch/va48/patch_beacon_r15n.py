@@ -136,6 +136,7 @@ SETUP_FN_NEW = r"""/*
 #define VA48_TEXT_ROWS		8
 
 #include <linux/ptrace.h>
+#include <linux/spinlock.h>
 
 bool va48_beacon_linear __read_mostly;
 
@@ -356,10 +357,45 @@ static atomic_t va48_svc_count = ATOMIC_INIT(0);
 static bool va48_svc_first, va48_svc_alive;
 static bool va48_hb1, va48_hb2, va48_hb3;
 
+/* Per-init tracking for detailed syscall logging */
+struct va48_init_track {
+	pid_t pid;
+	int log_count;
+	bool active;
+};
+static struct va48_init_track va48_init_tracks[8];
+static DEFINE_SPINLOCK(va48_init_track_lock);
+
+#define MAX_INIT_LOGS_PER_PID 25
+
+static struct va48_init_track *va48_get_init_track(pid_t pid)
+{
+	int i, empty = -1;
+	for (i = 0; i < 8; i++) {
+		if (va48_init_tracks[i].pid == pid && va48_init_tracks[i].active)
+			return &va48_init_tracks[i];
+		if (empty < 0 && !va48_init_tracks[i].active)
+			empty = i;
+	}
+	if (empty >= 0) {
+		va48_init_tracks[empty].pid = pid;
+		va48_init_tracks[empty].log_count = 0;
+		va48_init_tracks[empty].active = true;
+		return &va48_init_tracks[empty];
+	}
+	return NULL;
+}
+
 void va48_beacon_svc(void)
 {
 	int n;
 	char msg[128];
+	struct pt_regs *regs;
+	int syscall_nr;
+	long ret;
+	bool is_init;
+	struct va48_init_track *track;
+	unsigned long flags;
 
 	if (likely(va48_hb3))
 		return;
@@ -375,6 +411,52 @@ void va48_beacon_svc(void)
 		va48_beacon(23);
 	}
 
+	/* Track init syscalls in detail */
+	is_init = strcmp(current->comm, "init") == 0;
+	if (is_init) {
+		regs = task_pt_regs(current);
+		if (!regs)
+			goto skip_init_track;
+
+		syscall_nr = regs->syscallno;
+		ret = regs->regs[0];  /* x0 = return value */
+
+		spin_lock_irqsave(&va48_init_track_lock, flags);
+		track = va48_get_init_track(task_pid_nr(current));
+		if (!track || track->log_count >= MAX_INIT_LOGS_PER_PID) {
+			spin_unlock_irqrestore(&va48_init_track_lock, flags);
+			goto skip_init_track;
+		}
+
+		/* Log key syscalls or failures */
+		if (ret < 0 || syscall_nr == 56 || syscall_nr == 57 ||
+		    syscall_nr == 63 || syscall_nr == 221 || syscall_nr == 94) {
+			/* 56=openat, 57=close, 63=read, 221=execve, 94=exit_group
+			 * Log all failures, or success for these key calls */
+			const char *name = "?";
+			switch (syscall_nr) {
+			case 56: name = "openat"; break;
+			case 57: name = "close"; break;
+			case 63: name = "read"; break;
+			case 48: name = "faccessat"; break;
+			case 79: name = "fstat"; break;
+			case 221: name = "execve"; break;
+			case 94: name = "exit_group"; break;
+			case 40: name = "mount"; break;
+			case 78: name = "readlinkat"; break;
+			}
+			snprintf(msg, sizeof(msg),
+				 "init[%d].%d: %s(%d) = %ld",
+				 task_pid_nr(current), track->log_count,
+				 name, syscall_nr, ret);
+			va48_log_late(msg);
+			pr_emerg("VA48 %s\n", msg);
+			track->log_count++;
+		}
+		spin_unlock_irqrestore(&va48_init_track_lock, flags);
+	}
+
+skip_init_track:
 	/* Heartbeat: report system state at milestones */
 	if (unlikely(n == VA48_SVC_HEARTBEAT_1 && !va48_hb1)) {
 		struct task_struct *p;
@@ -736,6 +818,21 @@ void va48_beacon_exit(long code)
 		if (n >= 8) {
 			va48_log_late("    (more VMAs not shown)");
 		}
+	}
+
+	/* Clean up init tracking for this pid */
+	if (strcmp(comm, "init") == 0) {
+		unsigned long flags;
+		int i;
+		pid_t pid = task_pid_nr(current);
+		spin_lock_irqsave(&va48_init_track_lock, flags);
+		for (i = 0; i < 8; i++) {
+			if (va48_init_tracks[i].pid == pid && va48_init_tracks[i].active) {
+				va48_init_tracks[i].active = false;
+				break;
+			}
+		}
+		spin_unlock_irqrestore(&va48_init_track_lock, flags);
 	}
 }
 
