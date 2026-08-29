@@ -110,17 +110,38 @@ NOT A BUG (checked, left alone)
                 check_version() and are rejected with -ENOEXEC.  No UFS, no
                 SMMU, no /data -> first splash then reset.  CONFIG_MODVERSIONS
                 stays =y so vermagic still matches in same_magic().
-  J mm/util.c   : Clamp mmap_base underflow in arch_pick_mmap_layout().
-                With VA_BITS_MIN=39, DEFAULT_MAP_WINDOW_64 = 512 GiB, so
-                mmap_base() = STACK_TOP - gap - rnd can UNDERFLOW when gap+rnd
-                is large, yielding a negative (kernel-space) address.  This was
-                observed as mmap_base=0xfffffeb924017000 in pid 1436
-                boringssl_self_test, causing SIGSEGV.  Instead of widening
-                DEFAULT_MAP_WINDOW (which would affect all processes), clamp
-                the result: if mmap_base >= TASK_SIZE_64, reset to
-                TASK_SIZE_64 / 4 (64 TiB).  Keeps default mmap window at
-                512 GiB (preserving VA39 compatibility) while preventing
-                kernel-address underflow.
+  K arm64/Kconfig : ARCH_MMAP_RND_BITS_MAX 33 -> 24.  THE ROUND-3 BOOT KILLER.
+                Everything userspace can see is pinned to VA39 via VA_BITS_MIN
+                (patch A4): STACK_TOP_MAX, TASK_UNMAPPED_BASE and
+                ELF_ET_DYN_BASE all derive from DEFAULT_MAP_WINDOW_64 = 512 GiB.
+                This Kconfig default does NOT: upstream derives it from VA_BITS
+                (48 - PAGE_SHIFT - 3 = 33), so flipping ARM64_VA_BITS_39 ->
+                ARM64_VA_BITS_48 silently raises it from 24 to 33.
+
+                arch_mmap_rnd() then returns up to (2^33) << 12 = 32 TiB, while
+                mmap_base() = STACK_TOP(512 GiB) - gap - rnd.  That wraps below
+                zero whenever rnd > ~511 GiB, i.e. for ~98% of execs, handing
+                the process a kernel-space mmap_base.  Measured once as
+                mmap_base=0xfffffeb924017000 in pid 1436 boringssl_self_test.
+
+                rnd is drawn fresh per exec, so the failure is RANDOM PER
+                PROCESS -- which is exactly why the boot failure never
+                reproduced the same way twice.  24 is what ARM64_VA_BITS=39
+                gets, so userspace keeps stock VA39 ASLR entropy.  Capping the
+                Kconfig also caps mmap_rnd_bits_max, so a later write to
+                /proc/sys/vm/mmap_rnd_bits cannot re-break it.
+
+  J mm/util.c   : Last-line-of-defence clamp in arch_pick_mmap_layout().
+                With K1 in place mmap_base() can no longer wrap, but keep a
+                guard.  NOTE the previous revision of this patch clamped to
+                TASK_SIZE_64 / 4 (64 TiB), which is WORSE than the underflow it
+                was fixing: arch_get_mmap_base() returns mmap_base unchanged for
+                a NULL hint, so vm_unmapped_area()'s high_limit becomes 64 TiB
+                and every mapping in that process lands at a 47-bit address.
+                Userspace that assumes a 39-bit layout (ART, BoringSSL) breaks
+                just as hard, only more quietly.  Clamp back INTO the VA39
+                window instead, using STACK_TOP so compat (AArch32) tasks get
+                the right ceiling too.
 
 Run from the kernel source root:  python3 patch_va48.py [tree_root]
 Exits non-zero if ANY anchor is missing (never silently half-patches).
@@ -154,6 +175,34 @@ def patch(relpath, edits, required=True):
             failed.append(f"{relpath} [{name}]: anchor matched {n}x (ambiguous)")
             continue
         src = src.replace(old, new, 1)
+        applied.append(f"{relpath} [{name}]")
+    if src != orig:
+        with open(p, "w", encoding="utf-8", errors="surrogateescape") as f:
+            f.write(src)
+
+
+def patch_re(relpath, edits):
+    """Same contract as patch(), but anchors are multiline regexes.
+
+    Used where the OEM/GKI tree diverges textually from mainline for a site we
+    still need to hit exactly once.  Kept separate from patch() so the plain
+    string anchors above stay easy to eyeball against the source.
+    """
+    p = os.path.join(ROOT, relpath)
+    if not os.path.exists(p):
+        failed.append(f"{relpath}: FILE NOT FOUND")
+        return
+    with open(p, "r", encoding="utf-8", errors="surrogateescape") as f:
+        src = f.read()
+    orig = src
+    for name, pattern, new in edits:
+        rx = re.compile(pattern, re.M)
+        n = len(rx.findall(src))
+        if n != 1:
+            failed.append(f"{relpath} [{name}]: regex matched {n}x (want 1)")
+            continue
+        # lambda replacement: no backslash/group interpretation in `new`
+        src = rx.sub(lambda m: new, src, count=1)
         applied.append(f"{relpath} [{name}]")
     if src != orig:
         with open(p, "w", encoding="utf-8", errors="surrogateescape") as f:
@@ -305,14 +354,46 @@ patch("mm/util.c", [
         "J1 clamp mmap_base underflow",
         "\tmm->mmap_base = mmap_base(random_factor, rlim_stack);\n",
         "\tmm->mmap_base = mmap_base(random_factor, rlim_stack);\n"
-        "\t/* VA48/VA39: With VA_BITS_MIN=39, DEFAULT_MAP_WINDOW_64=512GiB, so\n"
-        "\t * STACK_TOP is only 512GiB.  If gap+rnd (from arch_mmap_rnd()) is\n"
-        "\t * large, mmap_base() = STACK_TOP - gap - rnd can underflow into\n"
-        "\t * kernel address space (0xffffff...).  Observed: pid 1436\n"
-        "\t * boringssl_self_test got mmap_base=0xfffffeb924017000 -> SIGSEGV.\n"
-        "\t * Clamp to a safe minimum (TASK_SIZE_64 / 4 = 64 TiB). */\n"
-        "\tif (mm->mmap_base >= TASK_SIZE_64)\n"
-        "\t\tmm->mmap_base = TASK_SIZE_64 / 4;\n",
+        "\t\t/* VA48/VA39: STACK_TOP is DEFAULT_MAP_WINDOW_64 (512 GiB, pinned by\n"
+        "\t\t * VA_BITS_MIN) while TASK_SIZE_64 is 256 TiB, so mmap_base() =\n"
+        "\t\t * STACK_TOP - gap - rnd wraps below zero if arch_mmap_rnd() ever\n"
+        "\t\t * exceeds ~511 GiB.  Patch K1 caps mmap_rnd_bits at 24 (rnd <= 64\n"
+        "\t\t * GiB) so it cannot; this is the last line of defence.\n"
+        "\t\t *\n"
+        "\t\t * Clamp back INTO the VA39 window, not to TASK_SIZE_64 / 4: with a\n"
+        "\t\t * NULL hint arch_get_mmap_base() returns mmap_base unchanged, so a\n"
+        "\t\t * 64 TiB base would put every mapping in the process at a 47-bit\n"
+        "\t\t * address and break VA39-assuming userspace (ART, BoringSSL) just as\n"
+        "\t\t * badly as the underflow, only more quietly.  STACK_TOP rather than\n"
+        "\t\t * DEFAULT_MAP_WINDOW_64 so compat (AArch32) tasks clamp correctly. */\n"
+        "\t\tif (mm->mmap_base >= STACK_TOP)\n"
+        "\t\t\tmm->mmap_base = STACK_TOP - (STACK_TOP >> 3);\n",
+    ),
+])
+
+# ---------------------------------------------------------------- K: arm64 Kconfig
+# THE ROUND-3 FIX.  ARCH_MMAP_RND_BITS_MAX is derived from VA_BITS upstream, so
+# it does NOT follow the VA_BITS_MIN pin and jumps 24 -> 33 when the VA_BITS
+# choice is flipped.  See the K entry in the module docstring.
+# Regex, not a plain anchor: mainline writes the 4K/VA48 default as
+#     default 33 if ARM64_VA_BITS=48
+# while the android14-6.1 GKI tree folds 52-bit VA into the same line as
+#     default 33 if (ARM64_VA_BITS=48 || ARM64_VA_BITS=52)
+# Both must hit, and exactly once.
+patch_re("arch/arm64/Kconfig", [
+    (
+        "K1 cap ARCH_MMAP_RND_BITS_MAX at the VA39 value",
+        r"^\tdefault 33 if "
+        r"(?:\(ARM64_VA_BITS=48 \|\| ARM64_VA_BITS=52\)|ARM64_VA_BITS=48)$",
+        "# VA48/VA39: userspace is pinned to the VA39 layout via VA_BITS_MIN, but\n"
+        "# this default is derived from VA_BITS (48 - PAGE_SHIFT - 3 = 33) and so\n"
+        "# does not follow the pin.  33 bits makes arch_mmap_rnd() return up to\n"
+        "# 32 TiB, which underflows mmap_base() = STACK_TOP(512 GiB) - gap - rnd\n"
+        "# for ~98% of execs and hands the process a kernel-space mmap_base.\n"
+        "# 24 is the ARM64_VA_BITS=39 value, i.e. stock VA39 ASLR entropy.  This\n"
+        "# also caps mmap_rnd_bits_max, so /proc/sys/vm/mmap_rnd_bits cannot be\n"
+        "# raised back into the broken range at runtime.\n"
+        "\tdefault 24 if (ARM64_VA_BITS=48 || ARM64_VA_BITS=52)",
     ),
 ])
 
@@ -358,7 +439,7 @@ if failed:
     print("A partially patched tree builds fine and then dies before console output.")
     sys.exit(1)
 
-EXPECT = 13
+EXPECT = 14
 if len(applied) != EXPECT:
     print(f"\nERROR: expected {EXPECT} edits, applied {len(applied)}.")
     sys.exit(1)

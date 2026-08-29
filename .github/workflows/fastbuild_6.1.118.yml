@@ -560,8 +560,9 @@ jobs:
         run: |
           set -euo pipefail
           echo "正在应用 VA48 用户空间补丁（TASK_SIZE_64=256TiB，VA39 内核布局）..."
+          echo "  r16: K1 = mmap ASLR 熵封顶 24 位（VA39 值），J1 = clamp 回 VA39 窗口"
           echo "正在应用 VA48 beacon r15n（增强 BoringSSL 诊断）..."
-          VA48_SHA=afba933d19ece3093029ad595fef957eb0ee9534bfae2fccea0a3a6110254e45
+          VA48_SHA=195c958c5a4b8de4558f51e28ec02c4120838f3270ba05700a0a867e773c9481
           BEACON_SHA=d1762570e1e836b12d4472da83bb65e3317ecb8e45bf898d7622f7011c70e3d6
           LAYOUT_SHA=79d8b75d9a86069bf86f62dec45c42f5c67ca6debe3b9c311ed7c9f853a1ef6b
           sha256sum -c <(printf '%s  %s\n' "$VA48_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py")
@@ -572,8 +573,8 @@ jobs:
           cp "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py" ./patch_va48.py
           cp "$GITHUB_WORKSPACE/other_patch/va48/patch_beacon_r15n.py" ./patch_beacon_r15n.py
           python3 patch_va48.py . 2>&1 | tee va48-patch.log
-          grep -q 'applied=13 failed=0' va48-patch.log
-          grep -q 'all 13 edits applied' va48-patch.log
+          grep -q 'applied=14 failed=0' va48-patch.log
+          grep -q 'all 14 edits applied' va48-patch.log
           python3 patch_beacon_r15n.py . 2>&1 | tee beacon-r15n-patch.log
           grep -q 'applied=31 expected=31 failed=0' beacon-r15n-patch.log
           grep -q 'beacon OK' beacon-r15n-patch.log
@@ -663,6 +664,18 @@ jobs:
           grep -q '^CONFIG_MODVERSIONS=y$' out/.config
           grep -q '^CONFIG_ARM64_VA_BITS_48=y$' out/.config
           grep -q '^# CONFIG_ARM64_VA_BITS_39 is not set$' out/.config
+          # VA48 K1：用户态 ASLR 熵必须停在 VA39 的 24 位。翻到 VA_BITS=48 后
+          # Kconfig 默认会跳到 33 位，arch_mmap_rnd() 最大 32 TiB，使
+          # mmap_base() = STACK_TOP(512GiB) - gap - rnd 对约 98% 的 exec 下溢
+          # 成内核地址（实测 0xfffffeb924017000）。rnd 每次 exec 重抽，所以
+          # 故障是随进程随机的——这正是启动失败无法复现的原因。
+          MAXB=$(sed -n 's/^CONFIG_ARCH_MMAP_RND_BITS_MAX=\(.*\)$/\1/p' out/.config)
+          RNDB=$(sed -n 's/^CONFIG_ARCH_MMAP_RND_BITS=\(.*\)$/\1/p' out/.config)
+          echo "[VA48] ARCH_MMAP_RND_BITS=${RNDB:-<unset>} MAX=${MAXB:-<unset>} (要求 <=24)"
+          if [ -z "$MAXB" ] || [ -z "$RNDB" ] || [ "$MAXB" -gt 24 ] || [ "$RNDB" -gt 24 ]; then
+            echo "::error::VA48 K1 未生效：mmap ASLR 熵 >24 位，mmap_base 会下溢进内核地址空间"
+            exit 1
+          fi
           cp out/.config "$GITHUB_WORKSPACE/va48-config.log"
           # VA48 beacon 镜像：panic_timeout=0 让 panic 挂住而不是立即重启
           ./scripts/config --file out/.config --set-val PANIC_TIMEOUT 0
