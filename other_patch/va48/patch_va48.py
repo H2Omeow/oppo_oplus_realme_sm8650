@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-VA48-with-VA39-kernel-layout patcher  (oneplus sm8650, kernel 6.1.118 GKI)
+VA48-with-VA39-kernel-layout patcher  (SM8650, kernel 6.1.118)
+
+TESTED SCOPE
+  The base r16 patch was reported by the user to boot normally on
+  OnePlus ACE5 running kernel 6.1.118. Other devices/versions are untested.
 
 GOAL
-  EAC (VRChat) needs ten MAP_FIXED PAGE_EXECUTE_READWRITE pages at
-  0x700100000000 .. 0x700a00000000  (~112 TiB).  VA39 user ceiling is 512 GiB,
-  so all ten fail -> "Failed to initialize Wine helper buffer" / error 60105.
+  Extend the userspace virtual address range from 512 GiB to 256 TiB so
+  applications can request fixed mappings above the VA39 limit. Keep the
+  default allocation window and kernel-side layout compatible with VA39.
 
   48-bit USER VA requires CONFIG_ARM64_VA_BITS=48 -> CONFIG_PGTABLE_LEVELS=4.
   A naive config flip ALSO moves the whole KERNEL side of the address space
@@ -217,8 +221,9 @@ patch("arch/arm64/include/asm/memory.h", [
         "#define VA_BITS\t\t\t(CONFIG_ARM64_VA_BITS)\n"
         "/*\n"
         " * VA48-USER / VA39-KERNEL decoupling.\n"
-        " * VA_BITS drives the USER half (TASK_SIZE_64 = 1<<vabits_actual) so EAC\n"
-        " * can place its fixed 112 TiB pages.  KERNEL_VA_BITS pins the KERNEL half\n"
+        " * Base r16 boot tested on OnePlus ACE5 / 6.1.118; other devices untested.\n"
+        " * VA_BITS drives the USER half (TASK_SIZE_64 = 1<<vabits_actual) so apps\n"
+        " * can request high-address mappings. KERNEL_VA_BITS pins the KERNEL half\n"
         " * to its 39-bit layout so prebuilt vendor modules that inlined PAGE_OFFSET,\n"
         " * PAGE_END, VMALLOC_START and vmemmap stay correct.\n"
         " */\n"
@@ -246,7 +251,7 @@ patch("arch/arm64/include/asm/memory.h", [
         " * all derive from VA_BITS_MIN.  Keeping it at 39 keeps the kernel map and\n"
         " * the default mmap window exactly where stock VA39 put them; explicit\n"
         " * MAP_FIXED hints above DEFAULT_MAP_WINDOW still reach TASK_SIZE (256 TiB)\n"
-        " * via arch_get_mmap_end(), which is what EAC relies on.\n"
+        " * via arch_get_mmap_end(), preserving explicit high-address mappings.\n"
         " */\n"
         "#define VA_BITS_MIN\t\t(KERNEL_VA_BITS)\n",
     ),
