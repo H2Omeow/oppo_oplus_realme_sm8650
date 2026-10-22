@@ -164,7 +164,7 @@ jobs:
             echo "  重试 $i ..."; sleep 3
           done
           test -s /tmp/patch_va48.py || { echo "::error::VA48 补丁器下载失败"; exit 1; }
-          VA48_SHA=2e92cfe55d0e79d0cf60e3c806215aef9bf270597e079bb997141662cee20485
+          VA48_SHA=2cea005cfe18bb88631d2011af5918bdc18e86c7f855b65248f88d1737e7f063
           got_sha=$(sha256sum /tmp/patch_va48.py | cut -d' ' -f1)
           echo "补丁器 sha256: $got_sha"
           test "$got_sha" = "$VA48_SHA" || { echo "::error::VA48 补丁器指纹不符"; exit 1; }
@@ -184,6 +184,8 @@ jobs:
           grep -n 'GENMASK(VA_BITS - 1, 0)' arch/arm64/mm/mmu.c
           grep -cn 'IS_ENABLED(CONFIG_ARM64_16K_PAGES)' arch/arm64/mm/mmu.c || true
           grep -n 'return 1;' kernel/module/version.c | head -3
+          grep -n 'default 24 if (ARM64_VA_BITS=48' arch/arm64/Kconfig
+          grep -n 'mm->mmap_base >= STACK_TOP' mm/util.c
 
       - name: 配置ccache目录
         run: |
@@ -676,6 +678,18 @@ jobs:
           fi
           if [ "$PL" != "4" ]; then
             echo "::error::PGTABLE_LEVELS=$PL, expected 4 for 4K+VA48. Aborting."
+            exit 1
+          fi
+          # VA48 K1：用户态 ASLR 熵必须停在 VA39 的 24 位。翻到 VA_BITS=48 后
+          # Kconfig 默认跳到 33 位，arch_mmap_rnd() 最大 32 TiB，会让
+          # mmap_base() = STACK_TOP(512GiB) - gap - rnd 对约 98% 的 exec 下溢
+          # 成内核地址（实测 0xfffffeb924017000）。rnd 每次 exec 重抽，故障随
+          # 进程随机——这正是启动失败无法复现的原因。
+          MAXB=$(sed -n 's/^CONFIG_ARCH_MMAP_RND_BITS_MAX=\(.*\)$/\1/p' out/.config)
+          RNDB=$(sed -n 's/^CONFIG_ARCH_MMAP_RND_BITS=\(.*\)$/\1/p' out/.config)
+          echo "[VA48] ARCH_MMAP_RND_BITS=${RNDB:-<unset>} MAX=${MAXB:-<unset>} (要求 <=24)"
+          if [ -z "$MAXB" ] || [ -z "$RNDB" ] || [ "$MAXB" -gt 24 ] || [ "$RNDB" -gt 24 ]; then
+            echo "::error::VA48 K1 未生效：mmap ASLR 熵 >24 位，mmap_base 会下溢进内核地址空间"
             exit 1
           fi
           echo "[VA48] assertion passed"

@@ -22,6 +22,16 @@ on:
           - 'ksunext'
           - 'ksu'
           - 'none'
+      va48_enable:
+        description: '是否启用 VA48 r16 用户空间扩展（用户态48位/内核态39位，仅6.1.118）'
+        required: true
+        type: boolean
+        default: false
+      boot_log_enable:
+        description: '是否启用屏幕故障日志（沿用一加12屏幕地址；panic/oops显示内核日志和调用栈，卡死保留最后initcall；可独立于VA48启用）'
+        required: true
+        type: boolean
+        default: false
       susfs_enable:
         description: '是否开启susfs(用于增强隐藏环境挂载功能; 可能轻微增加耗电，上游更新导致不稳定时或不需要可关闭)'
         required: true
@@ -557,31 +567,38 @@ jobs:
           fi
            
       - name: 应用 VA48 用户空间扩展补丁
+        if: inputs.va48_enable
         run: |
           set -euo pipefail
           echo "正在应用 VA48 用户空间补丁（TASK_SIZE_64=256TiB，VA39 内核布局）..."
-          echo "正在应用 VA48 beacon r15n（增强 BoringSSL 诊断）..."
-          VA48_SHA=afba933d19ece3093029ad595fef957eb0ee9534bfae2fccea0a3a6110254e45
-          BEACON_SHA=d1762570e1e836b12d4472da83bb65e3317ecb8e45bf898d7622f7011c70e3d6
-          LAYOUT_SHA=79d8b75d9a86069bf86f62dec45c42f5c67ca6debe3b9c311ed7c9f853a1ef6b
+          echo "  r16: K1 = mmap ASLR 熵封顶 24 位（VA39 值），J1 = clamp 回 VA39 窗口"
+          VA48_SHA=2cea005cfe18bb88631d2011af5918bdc18e86c7f855b65248f88d1737e7f063
+          LAYOUT_SHA=422bc299088f525eb201f0baf674337c4952247ae7e1e80890c733ab79c1d936
           sha256sum -c <(printf '%s  %s\n' "$VA48_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py")
-          sha256sum -c <(printf '%s  %s\n' "$BEACON_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_beacon_r15n.py")
           sha256sum -c <(printf '%s  %s\n' "$LAYOUT_SHA" "$GITHUB_WORKSPACE/other_patch/va48/verify_layout.py")
           python3 "$GITHUB_WORKSPACE/other_patch/va48/verify_layout.py" | tee "$GITHUB_WORKSPACE/va48-layout.log"
           cd kernel_workspace/common
           cp "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py" ./patch_va48.py
-          cp "$GITHUB_WORKSPACE/other_patch/va48/patch_beacon_r15n.py" ./patch_beacon_r15n.py
           python3 patch_va48.py . 2>&1 | tee va48-patch.log
-          grep -q 'applied=13 failed=0' va48-patch.log
-          grep -q 'all 13 edits applied' va48-patch.log
-          python3 patch_beacon_r15n.py . 2>&1 | tee beacon-r15n-patch.log
-          grep -q 'applied=31 expected=31 failed=0' beacon-r15n-patch.log
-          grep -q 'beacon OK' beacon-r15n-patch.log
-          echo "VA48 补丁和 beacon r15n 补丁应用完成"
+          grep -q 'applied=14 failed=0' va48-patch.log
+          grep -q 'all 14 edits applied' va48-patch.log
+          echo "VA48 r16 补丁应用完成"
           # 切换 defconfig 到 VA_BITS=48（Kconfig choice，必须显式设置）
           sed -i '/CONFIG_ARM64_VA_BITS_39/d' arch/arm64/configs/gki_defconfig
           sed -i '/CONFIG_ARM64_VA_BITS_48/d' arch/arm64/configs/gki_defconfig
           echo "CONFIG_ARM64_VA_BITS_48=y" >> arch/arm64/configs/gki_defconfig
+
+      - name: 应用屏幕故障日志补丁
+        if: inputs.boot_log_enable
+        run: |
+          set -euo pipefail
+          BOOTLOG_SHA=db68910d035244bcb5370b9c583a938d1aa103b9f484f9d8499da7f1d41d0f1e
+          sha256sum -c <(printf '%s  %s\n' "$BOOTLOG_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_boot_log.py")
+          cd kernel_workspace/common
+          python3 "$GITHUB_WORKSPACE/other_patch/va48/patch_boot_log.py" . 2>&1 | tee boot-log-patch.log
+          grep -q 'applied=7 expected=7 failed=0' boot-log-patch.log
+          grep -q 'boot log patch OK' boot-log-patch.log
+          ./scripts/config --file arch/arm64/configs/gki_defconfig -e PRINTK -e KALLSYMS -e FONT_SUPPORT -e FONTS -e FONT_8x16
 
       - name: 构建内核
         run: |
@@ -656,16 +673,36 @@ jobs:
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
           set -euo pipefail
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig
-          grep -q '^CONFIG_ARM64_VA_BITS=48$' out/.config
-          grep -q '^CONFIG_PGTABLE_LEVELS=4$' out/.config
-          grep -q '^CONFIG_ARM64_4K_PAGES=y$' out/.config
-          grep -q '^CONFIG_COMPAT=y$' out/.config
-          grep -q '^CONFIG_MODVERSIONS=y$' out/.config
-          grep -q '^CONFIG_ARM64_VA_BITS_48=y$' out/.config
-          grep -q '^# CONFIG_ARM64_VA_BITS_39 is not set$' out/.config
-          cp out/.config "$GITHUB_WORKSPACE/va48-config.log"
-          # VA48 beacon 镜像：panic_timeout=0 让 panic 挂住而不是立即重启
-          ./scripts/config --file out/.config --set-val PANIC_TIMEOUT 0
+          if [[ "${{ inputs.va48_enable }}" == "true" ]]; then
+            grep -q '^CONFIG_ARM64_VA_BITS=48$' out/.config
+            grep -q '^CONFIG_PGTABLE_LEVELS=4$' out/.config
+            grep -q '^CONFIG_ARM64_4K_PAGES=y$' out/.config
+            grep -q '^CONFIG_COMPAT=y$' out/.config
+            grep -q '^CONFIG_MODVERSIONS=y$' out/.config
+            grep -q '^CONFIG_ARM64_VA_BITS_48=y$' out/.config
+            grep -q '^# CONFIG_ARM64_VA_BITS_39 is not set$' out/.config
+            # VA48 K1：用户态 ASLR 熵必须停在 VA39 的 24 位。翻到 VA_BITS=48 后
+            # Kconfig 默认会跳到 33 位，arch_mmap_rnd() 最大 32 TiB，使
+            # mmap_base() = STACK_TOP(512GiB) - gap - rnd 对约 98% 的 exec 下溢
+            # 成内核地址（实测 0xfffffeb924017000）。rnd 每次 exec 重抽，所以
+            # 故障是随进程随机的——这正是启动失败无法复现的原因。
+            MAXB=$(sed -n 's/^CONFIG_ARCH_MMAP_RND_BITS_MAX=\(.*\)$/\1/p' out/.config)
+            RNDB=$(sed -n 's/^CONFIG_ARCH_MMAP_RND_BITS=\(.*\)$/\1/p' out/.config)
+            echo "[VA48] ARCH_MMAP_RND_BITS=${RNDB:-<unset>} MAX=${MAXB:-<unset>} (要求 <=24)"
+            if [ -z "$MAXB" ] || [ -z "$RNDB" ] || [ "$MAXB" -gt 24 ] || [ "$RNDB" -gt 24 ]; then
+              echo "::error::VA48 K1 未生效：mmap ASLR 熵 >24 位，mmap_base 会下溢进内核地址空间"
+              exit 1
+            fi
+            cp out/.config "$GITHUB_WORKSPACE/va48-config.log"
+          fi
+          if [[ "${{ inputs.boot_log_enable }}" == "true" ]]; then
+            grep -q '^CONFIG_PRINTK=y$' out/.config
+            grep -q '^CONFIG_KALLSYMS=y$' out/.config
+            grep -q '^CONFIG_FONT_SUPPORT=y$' out/.config
+            grep -q '^CONFIG_FONT_8x16=y$' out/.config
+            ./scripts/config --file out/.config --set-val PANIC_TIMEOUT 0
+            cp out/.config "$GITHUB_WORKSPACE/boot-log-config.log"
+          fi
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error Image
           test -s out/arch/arm64/boot/Image
           
@@ -751,6 +788,8 @@ jobs:
           echo "Kernel Ver: $FULL_VERSION" >> ./ak3.log
           echo "KSU Branch: ${KSU_TYPENAME}" >> ./ak3.log
           echo "KSU Ver: ${KSUVER}" >> ./ak3.log
+          echo "VA48 r16: ${{ inputs.va48_enable }}" >> ./ak3.log
+          echo "Boot crash log: ${{ inputs.boot_log_enable }}" >> ./ak3.log
           echo "susfs: ${{ github.event.inputs.susfs_enable }}" >> ./ak3.log
           echo "KPM: ${{ github.event.inputs.kpm_enable }}" >> ./ak3.log
           echo "LZ4: ${{ github.event.inputs.lz4_enable }}" >> ./ak3.log
@@ -772,7 +811,7 @@ jobs:
           archive: true
 
       - name: 上传 VA48 构建证据
-        if: always()
+        if: always() && inputs.va48_enable
         uses: actions/upload-artifact@v7
         with:
           name: va48-build-evidence
@@ -780,7 +819,17 @@ jobs:
             ${{ github.workspace }}/va48-layout.log
             ${{ github.workspace }}/va48-config.log
             ${{ github.workspace }}/kernel_workspace/common/va48-patch.log
-            ${{ github.workspace }}/kernel_workspace/common/beacon-r15n-patch.log
+          if-no-files-found: warn
+          archive: true
+
+      - name: 上传屏幕故障日志构建证据
+        if: always() && inputs.boot_log_enable
+        uses: actions/upload-artifact@v7
+        with:
+          name: boot-log-build-evidence
+          path: |
+            ${{ github.workspace }}/boot-log-config.log
+            ${{ github.workspace }}/kernel_workspace/common/boot-log-patch.log
           if-no-files-found: warn
           archive: true
 
@@ -847,6 +896,9 @@ jobs:
           - 编译时间: ${{ env.TIME_FORM }}
           - 机型：欧加真骁龙8Gen3通用 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} 内核（基于一加12 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} 版官方OKI源码）
           - KSU分支：${{ env.KSU_TYPENAME }}
+          - VA48 r16 用户空间扩展：${{ inputs.va48_enable }}
+          - VA48 基础 r16 测试范围：一加 ACE5 / 6.1.118 已测试正常开机，其他机型/版本未测试；新版屏幕日志未实机验证。
+          - 屏幕故障日志：${{ inputs.boot_log_enable }}
           - susfs支持：${{ github.event.inputs.susfs_enable }}
           - KPM支持 ：${{ github.event.inputs.kpm_enable }}
           - LZ4支持：${{ github.event.inputs.lz4_enable }}

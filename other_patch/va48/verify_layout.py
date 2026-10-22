@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """
-Prove the VA48-USER-ONLY patch reproduces the stock VA39 kernel layout exactly.
+通过地址算术检查，确认 VA48 用户空间补丁保留原 VA39 内核布局。
 
-Run this BEFORE trusting any built image. It is pure arithmetic -- no kernel
-source needed -- and it encodes the values observed on the live device, so a
-mismatch means the patch logic is wrong, not that the device is unusual.
-
-    python3 verify_layout.py
+该检查无需完整内核源码，只验证地址计算；不能代替完整编译和实机开机验证。
+运行方法：python3 verify_layout.py
 """
 
 PAGE_SHIFT = 12
@@ -61,9 +58,9 @@ stock39 = layout(39, 39)          # what the prebuilt vendor modules expect
 naive48 = layout(48, 48)          # plain CONFIG_ARM64_VA_BITS_48 -- bricked
 patched = layout(48, 39)          # VA48 user + VA39 kernel layout
 
-show("stock VA39 (what 432 prebuilt modules were compiled against)", stock39)
-show("naive VA48 (the build that bricked the phone)", naive48)
-show("PATCHED: VA_BITS=48, KERNEL_VA_BITS=39", patched)
+show("原 VA39：厂商预编译模块依赖的内核布局", stock39)
+show("仅切换 VA48 配置：内核布局会发生变化", naive48)
+show("应用补丁后：VA_BITS=48，KERNEL_VA_BITS=39", patched)
 
 # --- the assertions that matter -------------------------------------------
 fail = []
@@ -76,16 +73,16 @@ for k in ("PAGE_OFFSET", "PAGE_END", "MODULES_VADDR",
         fail.append("%s: patched 0x%x != stock VA39 0x%x"
                     % (k, patched[k], stock39[k]))
 
-# User side must be 48-bit or EAC's fixed pages still cannot be mapped.
+# User side must be 48-bit to support high-address fixed mappings.
 if patched["TASK_SIZE_64"] != (1 << 48):
     fail.append("TASK_SIZE_64 is not 256 TiB")
 
-# EAC's highest fixed allocation must fall inside the user VA.
-EAC_TOP = 0x700a00000000 + 0x1000
-if EAC_TOP >= patched["TASK_SIZE_64"]:
-    fail.append("EAC top 0x%x does not fit in TASK_SIZE_64" % EAC_TOP)
-if EAC_TOP < (1 << 39):
-    fail.append("EAC top unexpectedly fits in VA39 -- premise wrong")
+# A representative high-address fixed mapping must fit in user VA.
+HIGH_FIXED_MAPPING_END = 0x700a00000000 + 0x1000
+if HIGH_FIXED_MAPPING_END >= patched["TASK_SIZE_64"]:
+    fail.append("High fixed mapping end 0x%x does not fit in TASK_SIZE_64" % HIGH_FIXED_MAPPING_END)
+if HIGH_FIXED_MAPPING_END < (1 << 39):
+    fail.append("High fixed mapping unexpectedly fits in VA39 -- premise wrong")
 
 # KIMAGE_VADDR must equal the _stext read off the running device.
 DEVICE_STEXT = 0xffffffc008000000
@@ -124,7 +121,7 @@ if fail:
 
 print("ALL CHECKS PASSED")
 print("  kernel side  : bit-identical to stock VA39 -> prebuilt __va() correct")
-print("  user side    : 256 TiB -> EAC's 0x700a00000000 fits")
+print("  user side    : 256 TiB -> high fixed-address mappings fit")
 print()
 print("STILL UNVERIFIED BY THIS SCRIPT (must check separately):")
 print("  1. KASAN_HW_TAGS is compatible with this layout; GENERIC/SW_TAGS")
