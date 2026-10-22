@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 """
-Prove the VA48-USER-ONLY patch reproduces the stock VA39 kernel layout exactly.
+通过地址算术检查，确认 VA48 用户空间补丁保留原 VA39 内核布局。
 
-Run this BEFORE trusting any built image. It is pure arithmetic -- no kernel
-source needed -- and it encodes the values observed on the live device, so a
-mismatch means the patch logic is wrong, not that the device is unusual.
-
-    python3 verify_layout.py
+该检查无需完整内核源码，只验证地址计算；不能代替完整编译和实机开机验证。
+运行方法：python3 verify_layout.py
 """
 
 PAGE_SHIFT = 12
@@ -61,9 +58,9 @@ stock39 = layout(39, 39)          # what the prebuilt vendor modules expect
 naive48 = layout(48, 48)          # plain CONFIG_ARM64_VA_BITS_48 -- bricked
 patched = layout(48, 39)          # VA48 user + VA39 kernel layout
 
-show("stock VA39 (what 432 prebuilt modules were compiled against)", stock39)
-show("naive VA48 (the build that bricked the phone)", naive48)
-show("PATCHED: VA_BITS=48, KERNEL_VA_BITS=39", patched)
+show("原 VA39：厂商预编译模块依赖的内核布局", stock39)
+show("仅切换 VA48 配置：内核布局会发生变化", naive48)
+show("应用补丁后：VA_BITS=48，KERNEL_VA_BITS=39", patched)
 
 # --- the assertions that matter -------------------------------------------
 fail = []

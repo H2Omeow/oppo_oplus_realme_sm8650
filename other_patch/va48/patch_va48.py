@@ -1,154 +1,29 @@
 #!/usr/bin/env python3
 """
-VA48-with-VA39-kernel-layout patcher  (SM8650, kernel 6.1.118)
+VA48 用户空间扩展补丁：保留 VA39 内核布局（SM8650 / 6.1.118）。
 
-TESTED SCOPE
-  The base r16 patch was reported by the user to boot normally on
-  OnePlus ACE5 running kernel 6.1.118. Other devices/versions are untested.
+已测试范围：用户已在一加 ACE5、6.1.118 上验证基础 r16 正常开机；
+其他机型和内核版本未测试。本声明不代表新增屏幕日志已通过实机验证。
 
-GOAL
-  Extend the userspace virtual address range from 512 GiB to 256 TiB so
-  applications can request fixed mappings above the VA39 limit. Keep the
-  default allocation window and kernel-side layout compatible with VA39.
+用途：将用户空间地址上限从 512 GiB 扩展到 256 TiB，允许高地址固定映射，
+同时保留默认 VA39 分配窗口和预编译厂商模块所依赖的内核虚拟地址布局。
 
-  48-bit USER VA requires CONFIG_ARM64_VA_BITS=48 -> CONFIG_PGTABLE_LEVELS=4.
-  A naive config flip ALSO moves the whole KERNEL side of the address space
-  (PAGE_OFFSET 0xffffff8000000000 -> 0xffff000000000000), which breaks every
-  prebuilt vendor module that inlined __va() / vmemmap / VMALLOC bounds.
+关键处理：
+  A：新增 KERNEL_VA_BITS=39，固定 PAGE_OFFSET、VA_BITS_MIN、VMEMMAP_START。
+  B/I：线性映射大小和可映射物理范围使用固定后的 PAGE_OFFSET。
+  C/D/E：适配 4 KiB 页面、四级页表下共享顶层目录的 VA39 内核布局。
+  F/H：C 与汇编中的恒等映射均按 VA_BITS=48 计算 T0SZ，匹配四级页表。
+  G：保留 CONFIG_MODVERSIONS，但跳过符号版本 CRC 比较，以兼容已有厂商模块。
+       这会放宽模块 ABI 检查，不能由此保证任意模块兼容。
+  K：将 mmap ASLR 位数上限限制为 24，防止随机偏移超过 VA39 默认分配窗口。
+  J：mmap_base 越界时夹回 STACK_TOP 对应的 VA39 窗口，兼顾 AArch32 任务。
 
-STRATEGY
-  TCR_EL1.T0SZ (user) and T1SZ (kernel) are architecturally independent.
-  So: build VA_BITS=48 (user gets 256 TiB via TASK_SIZE_64 = 1<<vabits_actual)
-  while pinning the ENTIRE kernel-side layout to its VA39 values, so that
-  PAGE_OFFSET / PAGE_END / MODULES_VADDR / KIMAGE_VADDR / VMALLOC_START /
-  VMEMMAP_START are bit-identical to what the 483 prebuilt .ko files expect.
+注意：用户和内核地址宽度分别由 TCR_EL1.T0SZ/T1SZ 控制。仅修改配置会移动
+内核布局；本补丁同时调整相关地址计算和页表初始化。KVM 等依赖完整 VA48
+内核布局的功能不在已验证范围内。
 
-CONSEQUENCE (why this needs more than memory.h)
-  With 4 levels PGDIR_SHIFT becomes 39, so a linear map pinned at
-  -(1<<39) collapses the linear map AND modules/vmalloc/fixmap/vmemmap into a
-  single PGD entry (511).  Three arm64 assertions assume that never happens on
-  4K pages, and idmap_t0sz is derived from VA_BITS_MIN.  All four must move.
-
-PATCH SITES
-  A memory.h  : introduce KERNEL_VA_BITS=39; pin PAGE_OFFSET, VA_BITS_MIN,
-                VMEMMAP_START   (PAGE_END/MODULES_VADDR/VMEMMAP_SIZE follow
-                VA_BITS_MIN automatically)
-  B mm/init.c : linear_region_size uses _PAGE_OFFSET(vabits_actual) directly,
-                which would yield 255.75 TiB instead of 256 GiB and then drive
-                memstart_addr far below real DRAM via CONFIG_RANDOMIZE_BASE
-                -> silent total corruption.  Use PAGE_OFFSET.
-  C mm/mmu.c  : map_mem BUILD_BUG_ON(pgd_index(direct_map_end-1)==...)
-                Guards hierarchical PXNTable on a shared table.  Cannot
-                materialise here: early_fixmap_init + map_kernel populate
-                pgd511's p4d entry BEFORE map_mem, so alloc_init_pud's
-                `if (p4d_none(p4d))` is false and NO_EXEC_MAPPINGS' P4D_TABLE_PXN
-                is never applied to the shared entry.  PXN still applies at PUD
-                level to the linear map's own puds (idx 0-255) and at PTE level.
-  D mm/mmu.c  : map_kernel BUG_ON(!IS_ENABLED(CONFIG_ARM64_16K_PAGES))
-  E mm/mmu.c  : early_fixmap_init same BUG_ON
-                Both only assert "shared top-level pgd should only happen on
-                16k/4levels".  The pud-reuse code path they guard is granule
-                agnostic and is exactly what we need on 4k/4levels.
-  F mm/mmu.c  : idmap_t0sz = 63 - __fls(pa | GENMASK(VA_BITS_MIN-1,0))
-                With VA_BITS_MIN=39 -> t0sz=25 -> 39-bit TTBR0 input -> HW
-                starts the walk at level 1, but idmap_pg_dir is a level-0 table
-                (IDMAP_PGD_ORDER = PHYS_MASK_SHIFT-PGDIR_SHIFT = 9).  Fatal.
-                Use VA_BITS (48) -> t0sz=16 -> level-0 start.  Matches stock.
-  H assembler.h: idmap_get_t0sz asm macro -- THE SAME BUG AS F, IN ASM, AND IT
-                RUNS FIRST.  This is what killed attempt #2 (multi-minute hang
-                at the first splash, no auto-reboot, nothing on console).
-                proc.S:__cpu_setup does:
-                    mov_q tcr, TCR_TxSZ(VA_BITS) | ...   ; T0SZ=16, correct
-                    idmap_get_t0sz x9                    ; recomputes -> 25
-                    tcr_set_t0sz  tcr, x9                ; OVERWRITES with 25
-                and __cpu_setup runs BEFORE the MMU is enabled.  So the CPU is
-                told TTBR0 has a 39-bit input and begins the walk at level 1,
-                while init_idmap_pg_dir is a level-0 table.  The very first
-                instruction fetch after MMU enable has no valid translation;
-                the exception vectors are equally unmapped, so it faults on the
-                fault forever.  No console, no panic (panic=-1 would have
-                rebooted), no watchdog pet -> exactly the observed dead hang.
-                Patch F alone is NOT enough: F only fixes the C copy used later
-                by cpu_replace_ttbr1().  Both copies must agree.
-  I mm/mmu.c  : arch_get_mappable_range() uses __pa(_PAGE_OFFSET(vabits_actual)).
-                With vabits_actual=48 that is 0xffff000000000000, which is NOT
-                in the pinned linear map, so __pa() returns garbage.  Not fatal
-                at boot (only memory-hotplug / memremap_pages call it, and
-                CONFIG_MEMORY_HOTPLUG=y on this device) but it is wrong.
-                Use PAGE_OFFSET, same reasoning as B.
-
-NOT A BUG (checked, left alone)
-  * vabits_actual: memory.h:199 defines it as ((u64)VA_BITS) whenever
-    VA_BITS <= 48, and mmu.c's runtime variable is inside #if VA_BITS > 48.
-    So it is a compile-time 48 here and TASK_SIZE_64 really is 256 TiB.
-  * kvm_compute_layout() does run (kernel is at EL1 so !is_kernel_in_hyp_mode()),
-    and its hyp VA math is nonsense with vabits_actual=48 vs a VA39 kernel --
-    but it only computes and stores values, never dereferences them, and KVM
-    cannot initialise on this device anyway (EL2 belongs to the Qualcomm
-    hypervisor).  Broken KVM guests are accepted collateral, not a boot blocker.
-  * kaslr_early.c's VA_BITS_MIN uses are wanted: they keep the KASLR offset
-    inside the VA39 vmalloc region, which is what pinning the layout needs.
-  H asm/assembler.h : idmap_get_t0sz macro -- THE ROUND-1 BOOT KILLER.
-                This is the ASM twin of site F and runs FIRST, from __cpu_setup
-                (proc.S:442), before the MMU is enabled.  proc.S sets
-                TCR_TxSZ(VA_BITS) -> T0SZ=16, then idmap_get_t0sz OVERWRITES
-                T0SZ with a value derived from VA_BITS_MIN.  Pinned to 39 that
-                is 25 -> 39-bit TTBR0 input -> the CPU begins the walk at level
-                1 while init_idmap_pg_dir is a level-0 table -> the very first
-                instruction fetch after MMU enable has no valid mapping, and
-                the exception vectors are unmapped too, so it is a
-                fault-on-fault hard hang: no console, no panic, no watchdog
-                reboot.  Observed as "stuck on first splash for minutes".
-                Patching F alone is NOT enough; F runs much later in
-                paging_init().  Use VA_BITS -> t0sz 16, agreeing with proc.S.
-  I mm/mmu.c  : arch_get_mappable_range() uses _PAGE_OFFSET(vabits_actual),
-                which with vabits_actual=48 is 0xffff000000000000 -- an address
-                outside the pinned linear map, so __pa() on it yields garbage.
-                Not fatal at boot (memory hotplug only) but CONFIG_MEMORY_HOTPLUG
-                =y on this device, so fix it rather than leave a live landmine.
-  G kernel/module/version.c : check_version() -> early return 1.
-                MEASURED: flipping to 4 levels changes the CRC of module_layout
-                (0xea759d7f -> 0x248147a7), _dev_err, kmalloc_caches, ... while
-                VA-independent symbols (strlen/memcpy/jiffies/_printk) are
-                byte-identical.  All 143 first-stage modules therefore fail
-                check_version() and are rejected with -ENOEXEC.  No UFS, no
-                SMMU, no /data -> first splash then reset.  CONFIG_MODVERSIONS
-                stays =y so vermagic still matches in same_magic().
-  K arm64/Kconfig : ARCH_MMAP_RND_BITS_MAX 33 -> 24.  THE ROUND-3 BOOT KILLER.
-                Everything userspace can see is pinned to VA39 via VA_BITS_MIN
-                (patch A4): STACK_TOP_MAX, TASK_UNMAPPED_BASE and
-                ELF_ET_DYN_BASE all derive from DEFAULT_MAP_WINDOW_64 = 512 GiB.
-                This Kconfig default does NOT: upstream derives it from VA_BITS
-                (48 - PAGE_SHIFT - 3 = 33), so flipping ARM64_VA_BITS_39 ->
-                ARM64_VA_BITS_48 silently raises it from 24 to 33.
-
-                arch_mmap_rnd() then returns up to (2^33) << 12 = 32 TiB, while
-                mmap_base() = STACK_TOP(512 GiB) - gap - rnd.  That wraps below
-                zero whenever rnd > ~511 GiB, i.e. for ~98% of execs, handing
-                the process a kernel-space mmap_base.  Measured once as
-                mmap_base=0xfffffeb924017000 in pid 1436 boringssl_self_test.
-
-                rnd is drawn fresh per exec, so the failure is RANDOM PER
-                PROCESS -- which is exactly why the boot failure never
-                reproduced the same way twice.  24 is what ARM64_VA_BITS=39
-                gets, so userspace keeps stock VA39 ASLR entropy.  Capping the
-                Kconfig also caps mmap_rnd_bits_max, so a later write to
-                /proc/sys/vm/mmap_rnd_bits cannot re-break it.
-
-  J mm/util.c   : Last-line-of-defence clamp in arch_pick_mmap_layout().
-                With K1 in place mmap_base() can no longer wrap, but keep a
-                guard.  NOTE the previous revision of this patch clamped to
-                TASK_SIZE_64 / 4 (64 TiB), which is WORSE than the underflow it
-                was fixing: arch_get_mmap_base() returns mmap_base unchanged for
-                a NULL hint, so vm_unmapped_area()'s high_limit becomes 64 TiB
-                and every mapping in that process lands at a 47-bit address.
-                Userspace that assumes a 39-bit layout (ART, BoringSSL) breaks
-                just as hard, only more quietly.  Clamp back INTO the VA39
-                window instead, using STACK_TOP so compat (AArch32) tasks get
-                the right ceiling too.
-
-Run from the kernel source root:  python3 patch_va48.py [tree_root]
-Exits non-zero if ANY anchor is missing (never silently half-patches).
+在内核源码根目录运行：python3 patch_va48.py [tree_root]
+任一必需锚点缺失时返回非零，构建工作流同时校验 14 处修改和生成配置。
 """
 
 import sys, os, re

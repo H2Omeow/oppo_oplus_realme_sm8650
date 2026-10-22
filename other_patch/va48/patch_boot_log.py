@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Optional SM8650/6.1.118 crash screen, independent of the VA48 patch.
+"""SM8650 / 6.1.118 可选屏幕故障日志，独立于 VA48 补丁。
 
-Uses the same OnePlus 12 splash address/geometry as the existing beacon.
-Shows the printk tail on panic/oops/reboot and the last running initcall on
-hangs. It cannot diagnose a CPU/power/display failure that cannot run code.
-No init syscall tracking, userspace process snapshots or boot-state edits.
+沿用旧 beacon 的一加12连续启动画面地址与尺寸；新日志尚未实机验证。
+panic/oops/重启时显示 printk 尾部，启动卡死时保留最后执行的 initcall。
+无法处理不能继续执行代码的 CPU、供电或显示故障。
+不跟踪 init 系统调用、不抓取进程快照、不修改启动验证状态。
+屏幕使用原有 ASCII 字库，屏幕提示和内核原始日志保留英文。
 """
 
 from pathlib import Path
@@ -12,7 +13,7 @@ import sys
 
 ROOT = Path(sys.argv[1] if len(sys.argv) > 1 else '.')
 HELPERS = r'''
-/* Optional boot crash screen: OnePlus 12 continuous-splash framebuffer. */
+/* 可选启动故障画面：沿用一加12连续启动画面的 framebuffer。 */
 #include <linux/atomic.h>
 #include <linux/font.h>
 #include <linux/io.h>
@@ -35,7 +36,7 @@ static atomic_t bootlog_dumping = ATOMIC_INIT(0);
 static atomic_t bootlog_checkpoint_busy = ATOMIC_INIT(0);
 static char bootlog_kmsg[16384];
 
-/* The whole buffer is static; crash handling never allocates or sleeps. */
+/* 缓冲区使用静态存储，故障处理期间不分配内存、不休眠。 */
 static void bootlog_line(const char *text, unsigned int row)
 {
 	const struct font_desc *font = &font_vga_8x16;
@@ -68,7 +69,7 @@ static void bootlog_line(const char *text, unsigned int row)
 	dcache_clean_inval_poc(addr, addr + BOOTLOG_LINE_H * BOOTLOG_STRIDE);
 }
 
-/* Partition into wrapped screen rows without losing a character at col 79. */
+/* 按屏幕宽度换行，避免丢失第79列边界处的字符。 */
 static size_t bootlog_next_row(const char *buf, size_t len, size_t pos)
 {
 	unsigned int col = 0;
@@ -105,7 +106,7 @@ static void bootlog_show(const char *reason)
 	if (!READ_ONCE(bootlog_ready) ||
 	    atomic_cmpxchg(&bootlog_dumping, 0, 1))
 		return;
-	/* A stopped CPU may hold checkpoint_busy; never wait for that lock. */
+	/* 已停止的 CPU 可能持有 checkpoint_busy，故障处理不能等待该锁。 */
 	WRITE_ONCE(bootlog_frozen, true);
 	kmsg_dump_rewind(&iter);
 	kmsg_dump_get_buffer(&iter, true, bootlog_kmsg, sizeof(bootlog_kmsg), &len);
@@ -133,7 +134,7 @@ static void bootlog_show(const char *reason)
 static void bootlog_dump(struct kmsg_dumper *dumper,
 			enum kmsg_dump_reason reason)
 {
-	/* kmsg_dump runs after the kernel has printed its backtrace. */
+	/* kmsg_dump 在内核输出回溯后调用，以便保留故障现场。 */
 	if (reason == KMSG_DUMP_PANIC) {
 		panic_timeout = 0;
 		bootlog_show("KERNEL PANIC - recent kernel log below");
@@ -172,7 +173,7 @@ void bootlog_initcall_start(initcall_t fn)
 
 void bootlog_initcall_finish(initcall_t fn, int ret)
 {
-	/* Failed initcalls can be non-fatal; label them as return codes. */
+	/* initcall 返回负值不一定致命，仅记录返回值，不直接判定为根因。 */
 	if (ret < 0)
 		pr_warn("bootlog: initcall %ps returned %d (may be non-fatal)\n", fn, ret);
 }
@@ -225,7 +226,7 @@ EDITS = {
 }
 
 def main():
-    # Validate every anchor before writing any file.
+    # 写入文件前校验所有锚点，避免锚点缺失导致只应用部分补丁。
     pending, applied, errors = {}, [], []
     for rel, edits in EDITS.items():
         path = ROOT / rel
