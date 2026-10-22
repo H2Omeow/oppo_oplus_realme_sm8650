@@ -12,16 +12,26 @@ on:
   workflow_dispatch:
     inputs:
       ksu_type:
-        description: 'KernelSU分支(ReSukiSU/SukiSU Ultra/KernelSU Next/KSU(原版)/无内置KSU,默认ReSukiSU)'
+        description: 'KernelSU分支(BakaSU/SukiSU Ultra/KernelSU Next/KSU(原版)/无内置KSU,默认BakaSU)'
         required: true
         type: choice
-        default: 'resukisu'
+        default: 'bakasu'
         options:
-          - 'resukisu'
+          - 'bakasu'
           - 'sukisu'
           - 'ksunext'
           - 'ksu'
           - 'none'
+      va48_enable:
+        description: '是否启用 VA48 r16 用户空间扩展（用户态48位/内核态39位，仅6.1.118）'
+        required: true
+        type: boolean
+        default: false
+      boot_log_enable:
+        description: '是否启用屏幕故障日志（沿用一加12屏幕地址；panic/oops显示内核日志和调用栈，卡死保留最后initcall；可独立于VA48启用）'
+        required: true
+        type: boolean
+        default: false
       susfs_enable:
         description: '是否开启susfs(用于增强隐藏环境挂载功能; 可能轻微增加耗电，上游更新导致不稳定时或不需要可关闭)'
         required: true
@@ -253,9 +263,9 @@ jobs:
         run: |
           # 进入内核工作目录
           cd kernel_workspace
-          if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" || ${{ github.event.inputs.ksu_type }} == "resukisu" ]]; then
-            echo "正在配置ReSukiSU（由于SukiSU长期未维护无法正常编译，且ReSukiSU兼容sukisu管理器，故SukiSU源码仓库已重定向为resukisu）..."
-            curl -LSs "https://raw.githubusercontent.com/ReSukiSU/ReSukiSU/refs/heads/main/kernel/setup.sh" | bash -s main
+          if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" || ${{ github.event.inputs.ksu_type }} == "bakasu" ]]; then
+            echo "正在配置BakaSU（由于SukiSU长期未维护无法正常编译，且BakaSU兼容sukisu管理器，故SukiSU源码仓库已重定向为bakasu）..."
+            curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/refs/heads/main/kernel/setup.sh" | bash -s main
             echo 'CONFIG_KSU_FULL_NAME_FORMAT="%TAG_NAME%-%COMMIT_SHA%@cctv18"' >> ./common/arch/arm64/configs/gki_defconfig
             cd ./KernelSU
             # 生成自定义版本号（基于提交计数）, 失败时使用 114514
@@ -302,7 +312,7 @@ jobs:
             cp ./susfs4ksu/kernel_patches/fs/* ./common/fs/
             cp ./susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
             cd ./common
-            patch -p1 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
+            patch -p1 -F 3 < 50_add_susfs_in_gki-${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
             patch -p1 -N -F 3 < 69_hide_stuff.patch || true
             cd ..
           else
@@ -312,7 +322,7 @@ jobs:
             echo "正在为原版 KernelSU (tiann/KernelSU)添加补丁..."
             cp ./susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
             cd ./KernelSU
-            patch -p1 < 10_enable_susfs_for_ksu.patch || true
+            patch -p1 -F 3 < 10_enable_susfs_for_ksu.patch || true
           fi
           
       - name: 应用lz4 1.10.0 & zstd 1.5.7补丁
@@ -326,7 +336,7 @@ jobs:
           cp ./$GITHUB_ACTOR/zram_patch/002-zstd.patch ./common/
           cd ./common
           git apply -p1 < 001-lz4.patch || true
-          patch -p1 < 002-zstd.patch || true
+          patch -p1 -F 3 < 002-zstd.patch || true
 
       - name: 应用 lz4kd 补丁
         if: inputs.lz4kd_enable
@@ -557,32 +567,38 @@ jobs:
           fi
            
       - name: 应用 VA48 用户空间扩展补丁
+        if: inputs.va48_enable
         run: |
           set -euo pipefail
           echo "正在应用 VA48 用户空间补丁（TASK_SIZE_64=256TiB，VA39 内核布局）..."
           echo "  r16: K1 = mmap ASLR 熵封顶 24 位（VA39 值），J1 = clamp 回 VA39 窗口"
-          echo "正在应用 VA48 beacon r15n（增强 BoringSSL 诊断）..."
-          VA48_SHA=195c958c5a4b8de4558f51e28ec02c4120838f3270ba05700a0a867e773c9481
-          BEACON_SHA=d1762570e1e836b12d4472da83bb65e3317ecb8e45bf898d7622f7011c70e3d6
-          LAYOUT_SHA=79d8b75d9a86069bf86f62dec45c42f5c67ca6debe3b9c311ed7c9f853a1ef6b
+          VA48_SHA=6c521b5bb76d1a774833bde0a45ceba38dc244dbb9f8ddedcbacce7c998fa9aa
+          LAYOUT_SHA=5850a79d1bff63c9eeb30f6e96ee34d606edc33c210ec07764bec9fbad7df7eb
           sha256sum -c <(printf '%s  %s\n' "$VA48_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py")
-          sha256sum -c <(printf '%s  %s\n' "$BEACON_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_beacon_r15n.py")
           sha256sum -c <(printf '%s  %s\n' "$LAYOUT_SHA" "$GITHUB_WORKSPACE/other_patch/va48/verify_layout.py")
           python3 "$GITHUB_WORKSPACE/other_patch/va48/verify_layout.py" | tee "$GITHUB_WORKSPACE/va48-layout.log"
           cd kernel_workspace/common
           cp "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py" ./patch_va48.py
-          cp "$GITHUB_WORKSPACE/other_patch/va48/patch_beacon_r15n.py" ./patch_beacon_r15n.py
           python3 patch_va48.py . 2>&1 | tee va48-patch.log
           grep -q 'applied=14 failed=0' va48-patch.log
           grep -q 'all 14 edits applied' va48-patch.log
-          python3 patch_beacon_r15n.py . 2>&1 | tee beacon-r15n-patch.log
-          grep -q 'applied=31 expected=31 failed=0' beacon-r15n-patch.log
-          grep -q 'beacon OK' beacon-r15n-patch.log
-          echo "VA48 补丁和 beacon r15n 补丁应用完成"
+          echo "VA48 r16 补丁应用完成"
           # 切换 defconfig 到 VA_BITS=48（Kconfig choice，必须显式设置）
           sed -i '/CONFIG_ARM64_VA_BITS_39/d' arch/arm64/configs/gki_defconfig
           sed -i '/CONFIG_ARM64_VA_BITS_48/d' arch/arm64/configs/gki_defconfig
           echo "CONFIG_ARM64_VA_BITS_48=y" >> arch/arm64/configs/gki_defconfig
+
+      - name: 应用屏幕故障日志补丁
+        if: inputs.boot_log_enable
+        run: |
+          set -euo pipefail
+          BOOTLOG_SHA=b7f8b6cca43ea88e0ba5df82f8b3fee6a25b06fd3154b3e72381859777ee9883
+          sha256sum -c <(printf '%s  %s\n' "$BOOTLOG_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_boot_log.py")
+          cd kernel_workspace/common
+          python3 "$GITHUB_WORKSPACE/other_patch/va48/patch_boot_log.py" . 2>&1 | tee boot-log-patch.log
+          grep -q 'applied=7 expected=7 failed=0' boot-log-patch.log
+          grep -q 'boot log patch OK' boot-log-patch.log
+          ./scripts/config --file arch/arm64/configs/gki_defconfig -e PRINTK -e KALLSYMS -e FONT_SUPPORT -e FONTS -e FONT_8x16
 
       - name: 构建内核
         run: |
@@ -657,28 +673,36 @@ jobs:
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
           set -euo pipefail
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig
-          grep -q '^CONFIG_ARM64_VA_BITS=48$' out/.config
-          grep -q '^CONFIG_PGTABLE_LEVELS=4$' out/.config
-          grep -q '^CONFIG_ARM64_4K_PAGES=y$' out/.config
-          grep -q '^CONFIG_COMPAT=y$' out/.config
-          grep -q '^CONFIG_MODVERSIONS=y$' out/.config
-          grep -q '^CONFIG_ARM64_VA_BITS_48=y$' out/.config
-          grep -q '^# CONFIG_ARM64_VA_BITS_39 is not set$' out/.config
-          # VA48 K1：用户态 ASLR 熵必须停在 VA39 的 24 位。翻到 VA_BITS=48 后
-          # Kconfig 默认会跳到 33 位，arch_mmap_rnd() 最大 32 TiB，使
-          # mmap_base() = STACK_TOP(512GiB) - gap - rnd 对约 98% 的 exec 下溢
-          # 成内核地址（实测 0xfffffeb924017000）。rnd 每次 exec 重抽，所以
-          # 故障是随进程随机的——这正是启动失败无法复现的原因。
-          MAXB=$(sed -n 's/^CONFIG_ARCH_MMAP_RND_BITS_MAX=\(.*\)$/\1/p' out/.config)
-          RNDB=$(sed -n 's/^CONFIG_ARCH_MMAP_RND_BITS=\(.*\)$/\1/p' out/.config)
-          echo "[VA48] ARCH_MMAP_RND_BITS=${RNDB:-<unset>} MAX=${MAXB:-<unset>} (要求 <=24)"
-          if [ -z "$MAXB" ] || [ -z "$RNDB" ] || [ "$MAXB" -gt 24 ] || [ "$RNDB" -gt 24 ]; then
-            echo "::error::VA48 K1 未生效：mmap ASLR 熵 >24 位，mmap_base 会下溢进内核地址空间"
-            exit 1
+          if [[ "${{ inputs.va48_enable }}" == "true" ]]; then
+            grep -q '^CONFIG_ARM64_VA_BITS=48$' out/.config
+            grep -q '^CONFIG_PGTABLE_LEVELS=4$' out/.config
+            grep -q '^CONFIG_ARM64_4K_PAGES=y$' out/.config
+            grep -q '^CONFIG_COMPAT=y$' out/.config
+            grep -q '^CONFIG_MODVERSIONS=y$' out/.config
+            grep -q '^CONFIG_ARM64_VA_BITS_48=y$' out/.config
+            grep -q '^# CONFIG_ARM64_VA_BITS_39 is not set$' out/.config
+            # VA48 K1：用户态 ASLR 熵必须停在 VA39 的 24 位。翻到 VA_BITS=48 后
+            # Kconfig 默认会跳到 33 位，arch_mmap_rnd() 最大 32 TiB，使
+            # mmap_base() = STACK_TOP(512GiB) - gap - rnd 对约 98% 的 exec 下溢
+            # 成内核地址（实测 0xfffffeb924017000）。rnd 每次 exec 重抽，所以
+            # 故障是随进程随机的——这正是启动失败无法复现的原因。
+            MAXB=$(sed -n 's/^CONFIG_ARCH_MMAP_RND_BITS_MAX=\(.*\)$/\1/p' out/.config)
+            RNDB=$(sed -n 's/^CONFIG_ARCH_MMAP_RND_BITS=\(.*\)$/\1/p' out/.config)
+            echo "[VA48] ARCH_MMAP_RND_BITS=${RNDB:-<unset>} MAX=${MAXB:-<unset>} (要求 <=24)"
+            if [ -z "$MAXB" ] || [ -z "$RNDB" ] || [ "$MAXB" -gt 24 ] || [ "$RNDB" -gt 24 ]; then
+              echo "::error::VA48 K1 未生效：mmap ASLR 熵 >24 位，mmap_base 会下溢进内核地址空间"
+              exit 1
+            fi
+            cp out/.config "$GITHUB_WORKSPACE/va48-config.log"
           fi
-          cp out/.config "$GITHUB_WORKSPACE/va48-config.log"
-          # VA48 beacon 镜像：panic_timeout=0 让 panic 挂住而不是立即重启
-          ./scripts/config --file out/.config --set-val PANIC_TIMEOUT 0
+          if [[ "${{ inputs.boot_log_enable }}" == "true" ]]; then
+            grep -q '^CONFIG_PRINTK=y$' out/.config
+            grep -q '^CONFIG_KALLSYMS=y$' out/.config
+            grep -q '^CONFIG_FONT_SUPPORT=y$' out/.config
+            grep -q '^CONFIG_FONT_8x16=y$' out/.config
+            ./scripts/config --file out/.config --set-val PANIC_TIMEOUT 0
+            cp out/.config "$GITHUB_WORKSPACE/boot-log-config.log"
+          fi
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error Image
           test -s out/arch/arm64/boot/Image
           
@@ -725,8 +749,8 @@ jobs:
           fi
           if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
             KSU_TYPENAME="SukiSU"
-          elif [[ ${{ github.event.inputs.ksu_type }} == "resukisu" ]]; then
-            KSU_TYPENAME="ReSukiSU"
+          elif [[ ${{ github.event.inputs.ksu_type }} == "bakasu" ]]; then
+            KSU_TYPENAME="BakaSU"
           elif [[ ${{ github.event.inputs.ksu_type }} == "ksunext" ]]; then
             KSU_TYPENAME="KSUNext"
           elif [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
@@ -764,6 +788,8 @@ jobs:
           echo "Kernel Ver: $FULL_VERSION" >> ./ak3.log
           echo "KSU Branch: ${KSU_TYPENAME}" >> ./ak3.log
           echo "KSU Ver: ${KSUVER}" >> ./ak3.log
+          echo "VA48 r16: ${{ inputs.va48_enable }}" >> ./ak3.log
+          echo "Boot crash log: ${{ inputs.boot_log_enable }}" >> ./ak3.log
           echo "susfs: ${{ github.event.inputs.susfs_enable }}" >> ./ak3.log
           echo "KPM: ${{ github.event.inputs.kpm_enable }}" >> ./ak3.log
           echo "LZ4: ${{ github.event.inputs.lz4_enable }}" >> ./ak3.log
@@ -785,7 +811,7 @@ jobs:
           archive: true
 
       - name: 上传 VA48 构建证据
-        if: always()
+        if: always() && inputs.va48_enable
         uses: actions/upload-artifact@v7
         with:
           name: va48-build-evidence
@@ -793,7 +819,17 @@ jobs:
             ${{ github.workspace }}/va48-layout.log
             ${{ github.workspace }}/va48-config.log
             ${{ github.workspace }}/kernel_workspace/common/va48-patch.log
-            ${{ github.workspace }}/kernel_workspace/common/beacon-r15n-patch.log
+          if-no-files-found: warn
+          archive: true
+
+      - name: 上传屏幕故障日志构建证据
+        if: always() && inputs.boot_log_enable
+        uses: actions/upload-artifact@v7
+        with:
+          name: boot-log-build-evidence
+          path: |
+            ${{ github.workspace }}/boot-log-config.log
+            ${{ github.workspace }}/kernel_workspace/common/boot-log-patch.log
           if-no-files-found: warn
           archive: true
 
@@ -838,8 +874,8 @@ jobs:
           echo "TAG_HEAD=$TAG_HEAD" >> $GITHUB_ENV
           if [[ ${{ github.event.inputs.ksu_type }} == "sukisu" ]]; then
             KSU_TYPENAME="SukiSU Ultra"
-          elif [[ ${{ github.event.inputs.ksu_type }} == "resukisu" ]]; then
-            KSU_TYPENAME="ReSukiSU"
+          elif [[ ${{ github.event.inputs.ksu_type }} == "bakasu" ]]; then
+            KSU_TYPENAME="BakaSU"
           elif [[ ${{ github.event.inputs.ksu_type }} == "ksunext" ]]; then
             KSU_TYPENAME="KernelSU Next"
           elif [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
@@ -860,6 +896,9 @@ jobs:
           - 编译时间: ${{ env.TIME_FORM }}
           - 机型：欧加真骁龙8Gen3通用 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} 内核（基于一加12 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} 版官方OKI源码）
           - KSU分支：${{ env.KSU_TYPENAME }}
+          - VA48 r16 用户空间扩展：${{ inputs.va48_enable }}
+          - VA48 基础 r16 测试范围：一加 ACE5 / 6.1.118 已测试正常开机，其他机型/版本未测试；新版屏幕日志未实机验证。
+          - 屏幕故障日志：${{ inputs.boot_log_enable }}
           - susfs支持：${{ github.event.inputs.susfs_enable }}
           - KPM支持 ：${{ github.event.inputs.kpm_enable }}
           - LZ4支持：${{ github.event.inputs.lz4_enable }}
@@ -870,7 +909,7 @@ jobs:
           - 三星SSG IO调度器支持：${{ github.event.inputs.ssg_enable }}
           - Re-Kernel支持：${{ github.event.inputs.rekernel_enable }}
           - 内核级基带保护支持：${{ github.event.inputs.baseband_guard }}
-          - ReSukiSU管理器下载：[ReSukiSU_CI](https://github.com/cctv18/ReSukiSU_CI/releases)
+          - BakaSU管理器下载：[BakaSU_CI](https://github.com/cctv18/BakaSU_CI/releases)
           - SukiSU Ultra管理器下载：[SukiSU-Ultra](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases)
           - KernelSU Next管理器下载：[KernelSU-Next](https://github.com/KernelSU-Next/KernelSU-Next/releases)
           - KSU原版管理器下载：[KernelSU](https://github.com/tiann/KernelSU/releases)
