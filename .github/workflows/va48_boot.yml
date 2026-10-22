@@ -164,7 +164,7 @@ jobs:
             echo "  重试 $i ..."; sleep 3
           done
           test -s /tmp/patch_va48.py || { echo "::error::VA48 补丁器下载失败"; exit 1; }
-          VA48_SHA=6c521b5bb76d1a774833bde0a45ceba38dc244dbb9f8ddedcbacce7c998fa9aa
+          VA48_SHA=2cea005cfe18bb88631d2011af5918bdc18e86c7f855b65248f88d1737e7f063
           got_sha=$(sha256sum /tmp/patch_va48.py | cut -d' ' -f1)
           echo "补丁器 sha256: $got_sha"
           test "$got_sha" = "$VA48_SHA" || { echo "::error::VA48 补丁器指纹不符"; exit 1; }

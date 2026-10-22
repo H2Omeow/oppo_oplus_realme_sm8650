@@ -572,8 +572,8 @@ jobs:
           set -euo pipefail
           echo "正在应用 VA48 用户空间补丁（TASK_SIZE_64=256TiB，VA39 内核布局）..."
           echo "  r16: K1 = mmap ASLR 熵封顶 24 位（VA39 值），J1 = clamp 回 VA39 窗口"
-          VA48_SHA=6c521b5bb76d1a774833bde0a45ceba38dc244dbb9f8ddedcbacce7c998fa9aa
-          LAYOUT_SHA=5850a79d1bff63c9eeb30f6e96ee34d606edc33c210ec07764bec9fbad7df7eb
+          VA48_SHA=2cea005cfe18bb88631d2011af5918bdc18e86c7f855b65248f88d1737e7f063
+          LAYOUT_SHA=422bc299088f525eb201f0baf674337c4952247ae7e1e80890c733ab79c1d936
           sha256sum -c <(printf '%s  %s\n' "$VA48_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_va48.py")
           sha256sum -c <(printf '%s  %s\n' "$LAYOUT_SHA" "$GITHUB_WORKSPACE/other_patch/va48/verify_layout.py")
           python3 "$GITHUB_WORKSPACE/other_patch/va48/verify_layout.py" | tee "$GITHUB_WORKSPACE/va48-layout.log"
@@ -592,7 +592,7 @@ jobs:
         if: inputs.boot_log_enable
         run: |
           set -euo pipefail
-          BOOTLOG_SHA=b7f8b6cca43ea88e0ba5df82f8b3fee6a25b06fd3154b3e72381859777ee9883
+          BOOTLOG_SHA=db68910d035244bcb5370b9c583a938d1aa103b9f484f9d8499da7f1d41d0f1e
           sha256sum -c <(printf '%s  %s\n' "$BOOTLOG_SHA" "$GITHUB_WORKSPACE/other_patch/va48/patch_boot_log.py")
           cd kernel_workspace/common
           python3 "$GITHUB_WORKSPACE/other_patch/va48/patch_boot_log.py" . 2>&1 | tee boot-log-patch.log
