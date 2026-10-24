@@ -1,0 +1,783 @@
+{
+  "说明": "固定提交的真实源码基线；仅用于锚点、开关与失败回滚检查，不代表完整编译或实机开机验证。",
+  "采集日期": "2026-10-24",
+  "versions": {
+    "6.1.57": {
+      "repository": "cctv18/android_kernel_common_oneplus_sm8650",
+      "branch": "oneplus/sm8650_u_14.0.0_oneplus12",
+      "sha": "9122bcb797bced6334d2f91177734a7b17de55c7",
+      "actual_version": "6.1.57",
+      "workflow": ".github/workflows/fastbuild_6.1.57.yml",
+      "files": {
+        "Makefile": {
+          "sha256": "798a6d4511d2672609fdd55b37f61a852047f75ac18300a5f03cf5929d0eeac2"
+        },
+        "arch/arm64/Kconfig": {
+          "sha256": "5285cd5b55f1ca8ba01aeb7402c4b2c68252868c661fba3cfe6187cf00eadc01"
+        },
+        "arch/arm64/configs/gki_defconfig": {
+          "sha256": "87e2c98c3abba03a9e49d7d8df7c5668652c67f48891526087e6bb4ac73f992c"
+        },
+        "arch/arm64/include/asm/assembler.h": {
+          "sha256": "a0c595903086c70e0af9bf9f1dc443cdae5edb0f4ed3547af32f3c3799039283"
+        },
+        "arch/arm64/include/asm/cacheflush.h": {
+          "sha256": "28185d3a782c8cd07de7a982ca4271114e01091fa3adb058b55adadf54c9a17b"
+        },
+        "arch/arm64/include/asm/fixmap.h": {
+          "sha256": "1ada588b476452811747e45ee46af4c784f4dcb82ac24a6f647f3878046d9d98"
+        },
+        "arch/arm64/include/asm/io.h": {
+          "sha256": "65c6cf9084dab1ff912ecf8af76c77c7ab8cf9bb48ca30357c1bf20251825ea8"
+        },
+        "arch/arm64/include/asm/kernel-pgtable.h": {
+          "sha256": "1bbff513327bf62dbc2e0783cf5aa64aae6e67bb3037a83e66b3d5befb48adba"
+        },
+        "arch/arm64/include/asm/memory.h": {
+          "sha256": "12e58a7b4cf186e4574b8311e521987a8a795011a4a68901e743c177dd5c58a2"
+        },
+        "arch/arm64/include/asm/pgtable-hwdef.h": {
+          "sha256": "2ed97178a95513598ece754695fbe5feb8dcc1209096f0b19a9a08342138e527"
+        },
+        "arch/arm64/include/asm/pgtable.h": {
+          "sha256": "a03109b24642d06e4cbe2dc5232a9eda00818156d9da0e86f584a3f941e46eb9"
+        },
+        "arch/arm64/include/asm/processor.h": {
+          "sha256": "b09c156fa8a5c9f6440f586dd1481031f4bf3291fdaa237db63441600a3dae2c"
+        },
+        "arch/arm64/kernel/head.S": {
+          "sha256": "78ac6730b5db8eb0b2b9ae66d91084ff85f9e9bd6c1ecf6dbab3ad42d0708ced"
+        },
+        "arch/arm64/kernel/setup.c": {
+          "sha256": "cdd1258353fa66691344e0aa269ed48949d652a1efa9c1e7de11ce9ef5258373"
+        },
+        "arch/arm64/mm/fault.c": {
+          "sha256": "5359258b9b404d25dd792f02d144d55d988e964783ebb269c0a16dbb432bb447"
+        },
+        "arch/arm64/mm/init.c": {
+          "sha256": "6643d18878e5bc510b8734bff589b0aeeaad44960a9897dc4804b690c63652fc"
+        },
+        "arch/arm64/mm/mmu.c": {
+          "sha256": "db08fccd9ec7e176836fa019e7aa42cb7c90e91dbef6f74c0bebcd767f1c4fbd"
+        },
+        "arch/arm64/mm/proc.S": {
+          "sha256": "40d321fa411c830ab9ca7f0af1d337dea51e89fc77b5ab59e31a012df4716b96"
+        },
+        "include/linux/font.h": {
+          "sha256": "a03ac58c54b10986afdc1ebb4def4673f62707dd72f11583c94fd49d7104e87b"
+        },
+        "include/linux/init.h": {
+          "sha256": "c0fa0f2282e02378722f1cbddbecd64c165eee7ae2e6f1810e74be38d368d25c"
+        },
+        "include/linux/io.h": {
+          "sha256": "04f2a2ac38170faa2cc42da2f6071f0c6eebdc73ab00b6e6a0c79e67f27c60e4"
+        },
+        "include/linux/ioport.h": {
+          "sha256": "f269347facb5ea0eb0175b56496204bd320c1a796e46d6e1270c0fc3004ae66c"
+        },
+        "include/linux/kmsg_dump.h": {
+          "sha256": "3d66a8bc4da57fa9c55161f0d156198fa2647acf789b92bb6ae7be35b6f3a1c2"
+        },
+        "include/linux/memblock.h": {
+          "sha256": "4485e0b0d43024c2592250ed96588e71706f4cd6d2789110eaa56070e933a971"
+        },
+        "include/linux/of.h": {
+          "sha256": "22101a33757cb08a11b0dbc2a58d350a81a42621c59d82585d31577562bd6e42"
+        },
+        "include/linux/of_address.h": {
+          "sha256": "661255186e0a3b5050f9489e971685553b8e63c39e399b4844f40fadbcde5d41"
+        },
+        "include/linux/panic.h": {
+          "sha256": "9562c474ec1133009f0ed33bc1f32d86052d3466b77b9dee7b904a9714f668e9"
+        },
+        "init/main.c": {
+          "sha256": "11e0bf4ae8b7adf460b5c78777a87bd37e66152f7864fc5030101293d23c8b82"
+        },
+        "kernel/module/main.c": {
+          "sha256": "5c79de698345f81d95962d9069aa34665250ca5edde2e3a7256794e07fefd922"
+        },
+        "kernel/module/version.c": {
+          "sha256": "59e095d2e241f81f9148ace8e62a557376ec74f904a349f27aa1504737165ac0"
+        },
+        "kernel/printk/printk.c": {
+          "sha256": "774ca28cb8a26c20ac786a685a75c2b0b78bf170e61bebb65483e9d2cdc6b1fa"
+        },
+        "kernel/reboot.c": {
+          "sha256": "f3e473fce32f832ed518a06722f2268828717f42d9e65ddb1f4c95c5d9823208"
+        },
+        "lib/fonts/Kconfig": {
+          "sha256": "5649182b92c99ae891315a1e5ebf8483aa21b60595fa4ed0d817888dea6f66b4"
+        },
+        "mm/util.c": {
+          "sha256": "a77668209526f870ce88a6ddfc9db4487d8a87a92a066442cd7de1f0353ad45a"
+        }
+      }
+    },
+    "6.1.75": {
+      "repository": "cctv18/android_kernel_common_oneplus_sm8650",
+      "branch": "oneplus/sm8650_v_15.0.0_oneplus12",
+      "sha": "78bbfcf77a69248a356528fe3716d1e394cc7e3c",
+      "actual_version": "6.1.75",
+      "workflow": ".github/workflows/fastbuild_6.1.75.yml",
+      "files": {
+        "Makefile": {
+          "sha256": "681ccf965b8745f43af29ac1b1c14f83f564475e6a99ee8312bcf9caee846872"
+        },
+        "arch/arm64/Kconfig": {
+          "sha256": "2c90f4a5e9248cb078bdc65e04437e4b07bc2a8d6134086a5a63fc4a5966bb7e"
+        },
+        "arch/arm64/configs/gki_defconfig": {
+          "sha256": "e2bdd178f5c32110ebdaca8393fcd67b178cb0cac37020a2f6bd2cd667031452"
+        },
+        "arch/arm64/include/asm/assembler.h": {
+          "sha256": "a0c595903086c70e0af9bf9f1dc443cdae5edb0f4ed3547af32f3c3799039283"
+        },
+        "arch/arm64/include/asm/cacheflush.h": {
+          "sha256": "28185d3a782c8cd07de7a982ca4271114e01091fa3adb058b55adadf54c9a17b"
+        },
+        "arch/arm64/include/asm/fixmap.h": {
+          "sha256": "1ada588b476452811747e45ee46af4c784f4dcb82ac24a6f647f3878046d9d98"
+        },
+        "arch/arm64/include/asm/io.h": {
+          "sha256": "65c6cf9084dab1ff912ecf8af76c77c7ab8cf9bb48ca30357c1bf20251825ea8"
+        },
+        "arch/arm64/include/asm/kernel-pgtable.h": {
+          "sha256": "1bbff513327bf62dbc2e0783cf5aa64aae6e67bb3037a83e66b3d5befb48adba"
+        },
+        "arch/arm64/include/asm/memory.h": {
+          "sha256": "4a5433a12088bcec0766fd9c311695a2b20469e629aa112378b0c4bbb44c930c"
+        },
+        "arch/arm64/include/asm/pgtable-hwdef.h": {
+          "sha256": "2ed97178a95513598ece754695fbe5feb8dcc1209096f0b19a9a08342138e527"
+        },
+        "arch/arm64/include/asm/pgtable.h": {
+          "sha256": "35fdbbcaf89416b0e5365f9202091f462442700c9b11b7988c4c7a95f245be48"
+        },
+        "arch/arm64/include/asm/processor.h": {
+          "sha256": "b09c156fa8a5c9f6440f586dd1481031f4bf3291fdaa237db63441600a3dae2c"
+        },
+        "arch/arm64/kernel/head.S": {
+          "sha256": "78ac6730b5db8eb0b2b9ae66d91084ff85f9e9bd6c1ecf6dbab3ad42d0708ced"
+        },
+        "arch/arm64/kernel/setup.c": {
+          "sha256": "02bcb7d6efdab05931d654da92ae8abd2b87f20c82dd40206dc278e95e73a80c"
+        },
+        "arch/arm64/mm/fault.c": {
+          "sha256": "9033cf1b558d5bd32047d7715fdb6cf0c3e3f8fc1c0083a2ae8ac976fc3e0740"
+        },
+        "arch/arm64/mm/init.c": {
+          "sha256": "6643d18878e5bc510b8734bff589b0aeeaad44960a9897dc4804b690c63652fc"
+        },
+        "arch/arm64/mm/mmu.c": {
+          "sha256": "db08fccd9ec7e176836fa019e7aa42cb7c90e91dbef6f74c0bebcd767f1c4fbd"
+        },
+        "arch/arm64/mm/proc.S": {
+          "sha256": "40d321fa411c830ab9ca7f0af1d337dea51e89fc77b5ab59e31a012df4716b96"
+        },
+        "include/linux/font.h": {
+          "sha256": "a03ac58c54b10986afdc1ebb4def4673f62707dd72f11583c94fd49d7104e87b"
+        },
+        "include/linux/init.h": {
+          "sha256": "c0fa0f2282e02378722f1cbddbecd64c165eee7ae2e6f1810e74be38d368d25c"
+        },
+        "include/linux/io.h": {
+          "sha256": "04f2a2ac38170faa2cc42da2f6071f0c6eebdc73ab00b6e6a0c79e67f27c60e4"
+        },
+        "include/linux/ioport.h": {
+          "sha256": "f269347facb5ea0eb0175b56496204bd320c1a796e46d6e1270c0fc3004ae66c"
+        },
+        "include/linux/kmsg_dump.h": {
+          "sha256": "3d66a8bc4da57fa9c55161f0d156198fa2647acf789b92bb6ae7be35b6f3a1c2"
+        },
+        "include/linux/memblock.h": {
+          "sha256": "4485e0b0d43024c2592250ed96588e71706f4cd6d2789110eaa56070e933a971"
+        },
+        "include/linux/of.h": {
+          "sha256": "7442c0a97170362f496573682b8cc0a1544df1a1a3b710aa5862e5356ba1c955"
+        },
+        "include/linux/of_address.h": {
+          "sha256": "661255186e0a3b5050f9489e971685553b8e63c39e399b4844f40fadbcde5d41"
+        },
+        "include/linux/panic.h": {
+          "sha256": "9562c474ec1133009f0ed33bc1f32d86052d3466b77b9dee7b904a9714f668e9"
+        },
+        "init/main.c": {
+          "sha256": "070fcc165873070ec249b8b2034c775be1f7e455cf696d31e645d0b49e6de975"
+        },
+        "kernel/module/main.c": {
+          "sha256": "5c79de698345f81d95962d9069aa34665250ca5edde2e3a7256794e07fefd922"
+        },
+        "kernel/module/version.c": {
+          "sha256": "59e095d2e241f81f9148ace8e62a557376ec74f904a349f27aa1504737165ac0"
+        },
+        "kernel/printk/printk.c": {
+          "sha256": "774ca28cb8a26c20ac786a685a75c2b0b78bf170e61bebb65483e9d2cdc6b1fa"
+        },
+        "kernel/reboot.c": {
+          "sha256": "79d96b06e5472c3cca3b8778d19989cd93e2592efe005fe1eab7818c308bc57f"
+        },
+        "lib/fonts/Kconfig": {
+          "sha256": "5649182b92c99ae891315a1e5ebf8483aa21b60595fa4ed0d817888dea6f66b4"
+        },
+        "mm/util.c": {
+          "sha256": "a77668209526f870ce88a6ddfc9db4487d8a87a92a066442cd7de1f0353ad45a"
+        }
+      }
+    },
+    "6.1.115": {
+      "repository": "cctv18/android_kernel_oneplus_mt6989",
+      "branch": "oneplus/mt6989_v_15.0.2_ace5_race",
+      "sha": "48cce41449bedae53d5db50975fefc22eb5b41e9",
+      "actual_version": "6.1.115",
+      "workflow": ".github/workflows/fastbuild_6.1.115.yml",
+      "files": {
+        "Makefile": {
+          "sha256": "bebdc4c2e3f2f6fb9470776d395a651a87676e740fc20f7d0eef653116392891"
+        },
+        "arch/arm64/Kconfig": {
+          "sha256": "8c4411ba18814c3132537ee97af4f70e9e48f604ba1c9627fd25a944c66f4b06"
+        },
+        "arch/arm64/configs/gki_defconfig": {
+          "sha256": "02ca8795c6b88c30ba9794f5f5186eb45f3db8aaa006d91468dc5365f31b163c"
+        },
+        "arch/arm64/include/asm/assembler.h": {
+          "sha256": "a0c595903086c70e0af9bf9f1dc443cdae5edb0f4ed3547af32f3c3799039283"
+        },
+        "arch/arm64/include/asm/cacheflush.h": {
+          "sha256": "28185d3a782c8cd07de7a982ca4271114e01091fa3adb058b55adadf54c9a17b"
+        },
+        "arch/arm64/include/asm/fixmap.h": {
+          "sha256": "1ada588b476452811747e45ee46af4c784f4dcb82ac24a6f647f3878046d9d98"
+        },
+        "arch/arm64/include/asm/io.h": {
+          "sha256": "65c6cf9084dab1ff912ecf8af76c77c7ab8cf9bb48ca30357c1bf20251825ea8"
+        },
+        "arch/arm64/include/asm/kernel-pgtable.h": {
+          "sha256": "1bbff513327bf62dbc2e0783cf5aa64aae6e67bb3037a83e66b3d5befb48adba"
+        },
+        "arch/arm64/include/asm/memory.h": {
+          "sha256": "12e58a7b4cf186e4574b8311e521987a8a795011a4a68901e743c177dd5c58a2"
+        },
+        "arch/arm64/include/asm/pgtable-hwdef.h": {
+          "sha256": "2ed97178a95513598ece754695fbe5feb8dcc1209096f0b19a9a08342138e527"
+        },
+        "arch/arm64/include/asm/pgtable.h": {
+          "sha256": "7cdb237aff81678e99b0f5b3f2c6d8dd4c8d9e7c0348f6ef9bf01682bc361dc8"
+        },
+        "arch/arm64/include/asm/processor.h": {
+          "sha256": "b09c156fa8a5c9f6440f586dd1481031f4bf3291fdaa237db63441600a3dae2c"
+        },
+        "arch/arm64/kernel/head.S": {
+          "sha256": "78ac6730b5db8eb0b2b9ae66d91084ff85f9e9bd6c1ecf6dbab3ad42d0708ced"
+        },
+        "arch/arm64/kernel/setup.c": {
+          "sha256": "9590e4a0b065491c6dc54825ddbe4090cbe9ce0c6401900987f811e0dc408775"
+        },
+        "arch/arm64/mm/fault.c": {
+          "sha256": "f93bfdf950f09eb7bb9132032966c329a9b55328a06519e79d152f226bed447c"
+        },
+        "arch/arm64/mm/init.c": {
+          "sha256": "6643d18878e5bc510b8734bff589b0aeeaad44960a9897dc4804b690c63652fc"
+        },
+        "arch/arm64/mm/mmu.c": {
+          "sha256": "46196992591434864fa8b448e16d2fb9c5bc853958a392893418c3dd8991d154"
+        },
+        "arch/arm64/mm/proc.S": {
+          "sha256": "40d321fa411c830ab9ca7f0af1d337dea51e89fc77b5ab59e31a012df4716b96"
+        },
+        "include/linux/font.h": {
+          "sha256": "a03ac58c54b10986afdc1ebb4def4673f62707dd72f11583c94fd49d7104e87b"
+        },
+        "include/linux/init.h": {
+          "sha256": "e0c0b9ede1f5eb4a7a1ec8b273df6275bea04c98b2c35fadea1de308e8498e36"
+        },
+        "include/linux/io.h": {
+          "sha256": "04f2a2ac38170faa2cc42da2f6071f0c6eebdc73ab00b6e6a0c79e67f27c60e4"
+        },
+        "include/linux/ioport.h": {
+          "sha256": "f269347facb5ea0eb0175b56496204bd320c1a796e46d6e1270c0fc3004ae66c"
+        },
+        "include/linux/kmsg_dump.h": {
+          "sha256": "3d66a8bc4da57fa9c55161f0d156198fa2647acf789b92bb6ae7be35b6f3a1c2"
+        },
+        "include/linux/memblock.h": {
+          "sha256": "5a408bb1e08b73911613e01490c22525b430ca89f96fe95be11bb1e939359324"
+        },
+        "include/linux/of.h": {
+          "sha256": "29035bf9fa9669140504e494e52ba7be683ebcbdbc7e199845c510b4dba3fcad"
+        },
+        "include/linux/of_address.h": {
+          "sha256": "661255186e0a3b5050f9489e971685553b8e63c39e399b4844f40fadbcde5d41"
+        },
+        "include/linux/panic.h": {
+          "sha256": "9562c474ec1133009f0ed33bc1f32d86052d3466b77b9dee7b904a9714f668e9"
+        },
+        "init/main.c": {
+          "sha256": "fc3eb7067ace59b3142a636599958922bd1a1261b9c75d3179a80bdccf7925c2"
+        },
+        "kernel/module/main.c": {
+          "sha256": "7dbe8258360b1013536a616253f8d639f000fcf20ea01565d19b7cfb332691d2"
+        },
+        "kernel/module/version.c": {
+          "sha256": "59e095d2e241f81f9148ace8e62a557376ec74f904a349f27aa1504737165ac0"
+        },
+        "kernel/printk/printk.c": {
+          "sha256": "ba227786bd551b3cd894d023bd7014112461feb5ec89b82d0c5b13b4d3c80569"
+        },
+        "kernel/reboot.c": {
+          "sha256": "2ac6cc43f7b33f0153b031e441de7aa126c1c89936c544226fe8706fcb01913a"
+        },
+        "lib/fonts/Kconfig": {
+          "sha256": "5649182b92c99ae891315a1e5ebf8483aa21b60595fa4ed0d817888dea6f66b4"
+        },
+        "mm/util.c": {
+          "sha256": "bb095678f691cb56dd44dca598aa1ef39f0b4a515c3346767f31930e2d9600c8"
+        }
+      }
+    },
+    "6.1.118": {
+      "repository": "cctv18/android_kernel_common_oneplus_sm8650",
+      "branch": "oneplus/sm8650_b_16.0.0_oneplus12",
+      "sha": "325c324e0c19da05545bc0f491b5c776866d4dde",
+      "actual_version": "6.1.118",
+      "workflow": ".github/workflows/fastbuild_6.1.118.yml",
+      "files": {
+        "Makefile": {
+          "sha256": "e993ae5006472f929e882e4e44ad6457ff72950b4d10d17d252fce823df91e41"
+        },
+        "arch/arm64/Kconfig": {
+          "sha256": "4d13c007343d99116c6e88b7fa0b5225626fdc4ba39ec8e19f96c69b9c18b1b3"
+        },
+        "arch/arm64/configs/gki_defconfig": {
+          "sha256": "b9fdfab7b0a6d65a49cc25f6c53b3b1b9e82fb2bd9039bdddbb6707ae4877c31"
+        },
+        "arch/arm64/include/asm/assembler.h": {
+          "sha256": "a0c595903086c70e0af9bf9f1dc443cdae5edb0f4ed3547af32f3c3799039283"
+        },
+        "arch/arm64/include/asm/cacheflush.h": {
+          "sha256": "28185d3a782c8cd07de7a982ca4271114e01091fa3adb058b55adadf54c9a17b"
+        },
+        "arch/arm64/include/asm/fixmap.h": {
+          "sha256": "1ada588b476452811747e45ee46af4c784f4dcb82ac24a6f647f3878046d9d98"
+        },
+        "arch/arm64/include/asm/io.h": {
+          "sha256": "65c6cf9084dab1ff912ecf8af76c77c7ab8cf9bb48ca30357c1bf20251825ea8"
+        },
+        "arch/arm64/include/asm/kernel-pgtable.h": {
+          "sha256": "1bbff513327bf62dbc2e0783cf5aa64aae6e67bb3037a83e66b3d5befb48adba"
+        },
+        "arch/arm64/include/asm/memory.h": {
+          "sha256": "4a5433a12088bcec0766fd9c311695a2b20469e629aa112378b0c4bbb44c930c"
+        },
+        "arch/arm64/include/asm/pgtable-hwdef.h": {
+          "sha256": "2ed97178a95513598ece754695fbe5feb8dcc1209096f0b19a9a08342138e527"
+        },
+        "arch/arm64/include/asm/pgtable.h": {
+          "sha256": "7cdb237aff81678e99b0f5b3f2c6d8dd4c8d9e7c0348f6ef9bf01682bc361dc8"
+        },
+        "arch/arm64/include/asm/processor.h": {
+          "sha256": "b09c156fa8a5c9f6440f586dd1481031f4bf3291fdaa237db63441600a3dae2c"
+        },
+        "arch/arm64/kernel/head.S": {
+          "sha256": "78ac6730b5db8eb0b2b9ae66d91084ff85f9e9bd6c1ecf6dbab3ad42d0708ced"
+        },
+        "arch/arm64/kernel/setup.c": {
+          "sha256": "9590e4a0b065491c6dc54825ddbe4090cbe9ce0c6401900987f811e0dc408775"
+        },
+        "arch/arm64/mm/fault.c": {
+          "sha256": "9033cf1b558d5bd32047d7715fdb6cf0c3e3f8fc1c0083a2ae8ac976fc3e0740"
+        },
+        "arch/arm64/mm/init.c": {
+          "sha256": "6643d18878e5bc510b8734bff589b0aeeaad44960a9897dc4804b690c63652fc"
+        },
+        "arch/arm64/mm/mmu.c": {
+          "sha256": "46196992591434864fa8b448e16d2fb9c5bc853958a392893418c3dd8991d154"
+        },
+        "arch/arm64/mm/proc.S": {
+          "sha256": "40d321fa411c830ab9ca7f0af1d337dea51e89fc77b5ab59e31a012df4716b96"
+        },
+        "include/linux/font.h": {
+          "sha256": "a03ac58c54b10986afdc1ebb4def4673f62707dd72f11583c94fd49d7104e87b"
+        },
+        "include/linux/init.h": {
+          "sha256": "e0c0b9ede1f5eb4a7a1ec8b273df6275bea04c98b2c35fadea1de308e8498e36"
+        },
+        "include/linux/io.h": {
+          "sha256": "04f2a2ac38170faa2cc42da2f6071f0c6eebdc73ab00b6e6a0c79e67f27c60e4"
+        },
+        "include/linux/ioport.h": {
+          "sha256": "f269347facb5ea0eb0175b56496204bd320c1a796e46d6e1270c0fc3004ae66c"
+        },
+        "include/linux/kmsg_dump.h": {
+          "sha256": "3d66a8bc4da57fa9c55161f0d156198fa2647acf789b92bb6ae7be35b6f3a1c2"
+        },
+        "include/linux/memblock.h": {
+          "sha256": "5a408bb1e08b73911613e01490c22525b430ca89f96fe95be11bb1e939359324"
+        },
+        "include/linux/of.h": {
+          "sha256": "29035bf9fa9669140504e494e52ba7be683ebcbdbc7e199845c510b4dba3fcad"
+        },
+        "include/linux/of_address.h": {
+          "sha256": "661255186e0a3b5050f9489e971685553b8e63c39e399b4844f40fadbcde5d41"
+        },
+        "include/linux/panic.h": {
+          "sha256": "9562c474ec1133009f0ed33bc1f32d86052d3466b77b9dee7b904a9714f668e9"
+        },
+        "init/main.c": {
+          "sha256": "b33a8bad8e1f1e7d71c39b2fa31864176de3886c0e258043294fb3a9cd401ee6"
+        },
+        "kernel/module/main.c": {
+          "sha256": "7dbe8258360b1013536a616253f8d639f000fcf20ea01565d19b7cfb332691d2"
+        },
+        "kernel/module/version.c": {
+          "sha256": "59e095d2e241f81f9148ace8e62a557376ec74f904a349f27aa1504737165ac0"
+        },
+        "kernel/printk/printk.c": {
+          "sha256": "a01391f788b3362e99889f19b7feb802d4db851b44f103b0a058d0a1f8632c69"
+        },
+        "kernel/reboot.c": {
+          "sha256": "2ac6cc43f7b33f0153b031e441de7aa126c1c89936c544226fe8706fcb01913a"
+        },
+        "lib/fonts/Kconfig": {
+          "sha256": "5649182b92c99ae891315a1e5ebf8483aa21b60595fa4ed0d817888dea6f66b4"
+        },
+        "mm/util.c": {
+          "sha256": "bb095678f691cb56dd44dca598aa1ef39f0b4a515c3346767f31930e2d9600c8"
+        }
+      }
+    },
+    "6.1.128": {
+      "repository": "cctv18/android_kernel_oneplus_mt6897",
+      "branch": "oneplus/mt6897_v_15.0.0_oneplus_pad",
+      "sha": "2dcc0ff7ba789c7b851c7fd24d1227ba4af6f5e1",
+      "actual_version": "6.1.128",
+      "workflow": ".github/workflows/fastbuild_6.1.128.yml",
+      "files": {
+        "Makefile": {
+          "sha256": "8a191740f24a65d2c35aca699d5f61947fc78fc368d90a89a3f3c2deb1a31ade"
+        },
+        "arch/arm64/Kconfig": {
+          "sha256": "4d13c007343d99116c6e88b7fa0b5225626fdc4ba39ec8e19f96c69b9c18b1b3"
+        },
+        "arch/arm64/configs/gki_defconfig": {
+          "sha256": "6bc3804ce1f8b832851b80f3f21b9ee653899448ef461ab7971d957c0f8243f0"
+        },
+        "arch/arm64/include/asm/assembler.h": {
+          "sha256": "a0c595903086c70e0af9bf9f1dc443cdae5edb0f4ed3547af32f3c3799039283"
+        },
+        "arch/arm64/include/asm/cacheflush.h": {
+          "sha256": "28185d3a782c8cd07de7a982ca4271114e01091fa3adb058b55adadf54c9a17b"
+        },
+        "arch/arm64/include/asm/fixmap.h": {
+          "sha256": "1ada588b476452811747e45ee46af4c784f4dcb82ac24a6f647f3878046d9d98"
+        },
+        "arch/arm64/include/asm/io.h": {
+          "sha256": "65c6cf9084dab1ff912ecf8af76c77c7ab8cf9bb48ca30357c1bf20251825ea8"
+        },
+        "arch/arm64/include/asm/kernel-pgtable.h": {
+          "sha256": "1bbff513327bf62dbc2e0783cf5aa64aae6e67bb3037a83e66b3d5befb48adba"
+        },
+        "arch/arm64/include/asm/memory.h": {
+          "sha256": "12e58a7b4cf186e4574b8311e521987a8a795011a4a68901e743c177dd5c58a2"
+        },
+        "arch/arm64/include/asm/pgtable-hwdef.h": {
+          "sha256": "2ed97178a95513598ece754695fbe5feb8dcc1209096f0b19a9a08342138e527"
+        },
+        "arch/arm64/include/asm/pgtable.h": {
+          "sha256": "7cdb237aff81678e99b0f5b3f2c6d8dd4c8d9e7c0348f6ef9bf01682bc361dc8"
+        },
+        "arch/arm64/include/asm/processor.h": {
+          "sha256": "b09c156fa8a5c9f6440f586dd1481031f4bf3291fdaa237db63441600a3dae2c"
+        },
+        "arch/arm64/kernel/head.S": {
+          "sha256": "78ac6730b5db8eb0b2b9ae66d91084ff85f9e9bd6c1ecf6dbab3ad42d0708ced"
+        },
+        "arch/arm64/kernel/setup.c": {
+          "sha256": "9590e4a0b065491c6dc54825ddbe4090cbe9ce0c6401900987f811e0dc408775"
+        },
+        "arch/arm64/mm/fault.c": {
+          "sha256": "9033cf1b558d5bd32047d7715fdb6cf0c3e3f8fc1c0083a2ae8ac976fc3e0740"
+        },
+        "arch/arm64/mm/init.c": {
+          "sha256": "6643d18878e5bc510b8734bff589b0aeeaad44960a9897dc4804b690c63652fc"
+        },
+        "arch/arm64/mm/mmu.c": {
+          "sha256": "46196992591434864fa8b448e16d2fb9c5bc853958a392893418c3dd8991d154"
+        },
+        "arch/arm64/mm/proc.S": {
+          "sha256": "40d321fa411c830ab9ca7f0af1d337dea51e89fc77b5ab59e31a012df4716b96"
+        },
+        "include/linux/font.h": {
+          "sha256": "a03ac58c54b10986afdc1ebb4def4673f62707dd72f11583c94fd49d7104e87b"
+        },
+        "include/linux/init.h": {
+          "sha256": "e0c0b9ede1f5eb4a7a1ec8b273df6275bea04c98b2c35fadea1de308e8498e36"
+        },
+        "include/linux/io.h": {
+          "sha256": "04f2a2ac38170faa2cc42da2f6071f0c6eebdc73ab00b6e6a0c79e67f27c60e4"
+        },
+        "include/linux/ioport.h": {
+          "sha256": "f269347facb5ea0eb0175b56496204bd320c1a796e46d6e1270c0fc3004ae66c"
+        },
+        "include/linux/kmsg_dump.h": {
+          "sha256": "3d66a8bc4da57fa9c55161f0d156198fa2647acf789b92bb6ae7be35b6f3a1c2"
+        },
+        "include/linux/memblock.h": {
+          "sha256": "5a408bb1e08b73911613e01490c22525b430ca89f96fe95be11bb1e939359324"
+        },
+        "include/linux/of.h": {
+          "sha256": "29035bf9fa9669140504e494e52ba7be683ebcbdbc7e199845c510b4dba3fcad"
+        },
+        "include/linux/of_address.h": {
+          "sha256": "661255186e0a3b5050f9489e971685553b8e63c39e399b4844f40fadbcde5d41"
+        },
+        "include/linux/panic.h": {
+          "sha256": "9562c474ec1133009f0ed33bc1f32d86052d3466b77b9dee7b904a9714f668e9"
+        },
+        "init/main.c": {
+          "sha256": "fc3eb7067ace59b3142a636599958922bd1a1261b9c75d3179a80bdccf7925c2"
+        },
+        "kernel/module/main.c": {
+          "sha256": "33f7a532216bccc12ab7c9f87b903fce7f3e15af31e2e6c22d41a070f2cb8bda"
+        },
+        "kernel/module/version.c": {
+          "sha256": "59e095d2e241f81f9148ace8e62a557376ec74f904a349f27aa1504737165ac0"
+        },
+        "kernel/printk/printk.c": {
+          "sha256": "6250774a135ae13fb61d53e56089f71206b99b07227697c1bdf0cdcd3cd637f2"
+        },
+        "kernel/reboot.c": {
+          "sha256": "2ac6cc43f7b33f0153b031e441de7aa126c1c89936c544226fe8706fcb01913a"
+        },
+        "lib/fonts/Kconfig": {
+          "sha256": "5649182b92c99ae891315a1e5ebf8483aa21b60595fa4ed0d817888dea6f66b4"
+        },
+        "mm/util.c": {
+          "sha256": "a2c6efe32d3d6adfa1a6ce6e6f53e00b12a69c97fd3ba05b230aacc03cf5c2ce"
+        }
+      }
+    },
+    "6.1.134": {
+      "repository": "cctv18/android_kernel_oneplus_mt6989",
+      "branch": "oneplus/mt6989_b_16.0.0_ace5_race",
+      "sha": "16bc556523df15b47f47ec4185616f0304c44240",
+      "actual_version": "6.1.134",
+      "workflow": ".github/workflows/fastbuild_6.1.134.yml",
+      "files": {
+        "Makefile": {
+          "sha256": "ad8be00aba638c5b925b9a0b00de1cc19459cea24d6dbd577815afe729c394c9"
+        },
+        "arch/arm64/Kconfig": {
+          "sha256": "4d13c007343d99116c6e88b7fa0b5225626fdc4ba39ec8e19f96c69b9c18b1b3"
+        },
+        "arch/arm64/configs/gki_defconfig": {
+          "sha256": "309160727bb48fd4c1910ed2644c1e7fc9dc13d3dcc6dec573726761fe335a10"
+        },
+        "arch/arm64/include/asm/assembler.h": {
+          "sha256": "a0c595903086c70e0af9bf9f1dc443cdae5edb0f4ed3547af32f3c3799039283"
+        },
+        "arch/arm64/include/asm/cacheflush.h": {
+          "sha256": "28185d3a782c8cd07de7a982ca4271114e01091fa3adb058b55adadf54c9a17b"
+        },
+        "arch/arm64/include/asm/fixmap.h": {
+          "sha256": "1ada588b476452811747e45ee46af4c784f4dcb82ac24a6f647f3878046d9d98"
+        },
+        "arch/arm64/include/asm/io.h": {
+          "sha256": "65c6cf9084dab1ff912ecf8af76c77c7ab8cf9bb48ca30357c1bf20251825ea8"
+        },
+        "arch/arm64/include/asm/kernel-pgtable.h": {
+          "sha256": "1bbff513327bf62dbc2e0783cf5aa64aae6e67bb3037a83e66b3d5befb48adba"
+        },
+        "arch/arm64/include/asm/memory.h": {
+          "sha256": "12e58a7b4cf186e4574b8311e521987a8a795011a4a68901e743c177dd5c58a2"
+        },
+        "arch/arm64/include/asm/pgtable-hwdef.h": {
+          "sha256": "2ed97178a95513598ece754695fbe5feb8dcc1209096f0b19a9a08342138e527"
+        },
+        "arch/arm64/include/asm/pgtable.h": {
+          "sha256": "7cdb237aff81678e99b0f5b3f2c6d8dd4c8d9e7c0348f6ef9bf01682bc361dc8"
+        },
+        "arch/arm64/include/asm/processor.h": {
+          "sha256": "b09c156fa8a5c9f6440f586dd1481031f4bf3291fdaa237db63441600a3dae2c"
+        },
+        "arch/arm64/kernel/head.S": {
+          "sha256": "78ac6730b5db8eb0b2b9ae66d91084ff85f9e9bd6c1ecf6dbab3ad42d0708ced"
+        },
+        "arch/arm64/kernel/setup.c": {
+          "sha256": "9590e4a0b065491c6dc54825ddbe4090cbe9ce0c6401900987f811e0dc408775"
+        },
+        "arch/arm64/mm/fault.c": {
+          "sha256": "f93bfdf950f09eb7bb9132032966c329a9b55328a06519e79d152f226bed447c"
+        },
+        "arch/arm64/mm/init.c": {
+          "sha256": "6643d18878e5bc510b8734bff589b0aeeaad44960a9897dc4804b690c63652fc"
+        },
+        "arch/arm64/mm/mmu.c": {
+          "sha256": "3441c689dee746536d2677dee5f3f2299409c7112caae66df40df6efe2f34735"
+        },
+        "arch/arm64/mm/proc.S": {
+          "sha256": "40d321fa411c830ab9ca7f0af1d337dea51e89fc77b5ab59e31a012df4716b96"
+        },
+        "include/linux/font.h": {
+          "sha256": "a03ac58c54b10986afdc1ebb4def4673f62707dd72f11583c94fd49d7104e87b"
+        },
+        "include/linux/init.h": {
+          "sha256": "e0c0b9ede1f5eb4a7a1ec8b273df6275bea04c98b2c35fadea1de308e8498e36"
+        },
+        "include/linux/io.h": {
+          "sha256": "04f2a2ac38170faa2cc42da2f6071f0c6eebdc73ab00b6e6a0c79e67f27c60e4"
+        },
+        "include/linux/ioport.h": {
+          "sha256": "f269347facb5ea0eb0175b56496204bd320c1a796e46d6e1270c0fc3004ae66c"
+        },
+        "include/linux/kmsg_dump.h": {
+          "sha256": "3d66a8bc4da57fa9c55161f0d156198fa2647acf789b92bb6ae7be35b6f3a1c2"
+        },
+        "include/linux/memblock.h": {
+          "sha256": "5a408bb1e08b73911613e01490c22525b430ca89f96fe95be11bb1e939359324"
+        },
+        "include/linux/of.h": {
+          "sha256": "29035bf9fa9669140504e494e52ba7be683ebcbdbc7e199845c510b4dba3fcad"
+        },
+        "include/linux/of_address.h": {
+          "sha256": "661255186e0a3b5050f9489e971685553b8e63c39e399b4844f40fadbcde5d41"
+        },
+        "include/linux/panic.h": {
+          "sha256": "9562c474ec1133009f0ed33bc1f32d86052d3466b77b9dee7b904a9714f668e9"
+        },
+        "init/main.c": {
+          "sha256": "fc3eb7067ace59b3142a636599958922bd1a1261b9c75d3179a80bdccf7925c2"
+        },
+        "kernel/module/main.c": {
+          "sha256": "33f7a532216bccc12ab7c9f87b903fce7f3e15af31e2e6c22d41a070f2cb8bda"
+        },
+        "kernel/module/version.c": {
+          "sha256": "59e095d2e241f81f9148ace8e62a557376ec74f904a349f27aa1504737165ac0"
+        },
+        "kernel/printk/printk.c": {
+          "sha256": "5055470b7e27dceffbd68edcbf47194b18de0b83f8d3ef2acd55af0b75323a3a"
+        },
+        "kernel/reboot.c": {
+          "sha256": "2ac6cc43f7b33f0153b031e441de7aa126c1c89936c544226fe8706fcb01913a"
+        },
+        "lib/fonts/Kconfig": {
+          "sha256": "5649182b92c99ae891315a1e5ebf8483aa21b60595fa4ed0d817888dea6f66b4"
+        },
+        "mm/util.c": {
+          "sha256": "309161258dc294d8b00ac4bc6780653b623982b61a40cf8a2b04d0e90dcb2cb7"
+        }
+      }
+    },
+    "6.1.141": {
+      "repository": "cctv18/android_kernel_common_oneplus_sm8650",
+      "branch": "oneplus/sm8650_b_16.0.0_oneplus12_6.1.141",
+      "sha": "7a244ff186208e81791a0792d5032b63dbad2eda",
+      "actual_version": "6.1.141",
+      "workflow": ".github/workflows/fastbuild_6.1.141.yml",
+      "files": {
+        "Makefile": {
+          "sha256": "be9941b4c3f76fa7b824e70b7320f5f651156b9663ee7f0d96919be1bb3b4e66"
+        },
+        "arch/arm64/Kconfig": {
+          "sha256": "4d13c007343d99116c6e88b7fa0b5225626fdc4ba39ec8e19f96c69b9c18b1b3"
+        },
+        "arch/arm64/configs/gki_defconfig": {
+          "sha256": "38cfc22a8a53c8fe17f7edd83331b536bf67ccfa1e6690705749cf23e347750f"
+        },
+        "arch/arm64/include/asm/assembler.h": {
+          "sha256": "a0c595903086c70e0af9bf9f1dc443cdae5edb0f4ed3547af32f3c3799039283"
+        },
+        "arch/arm64/include/asm/cacheflush.h": {
+          "sha256": "28185d3a782c8cd07de7a982ca4271114e01091fa3adb058b55adadf54c9a17b"
+        },
+        "arch/arm64/include/asm/fixmap.h": {
+          "sha256": "1ada588b476452811747e45ee46af4c784f4dcb82ac24a6f647f3878046d9d98"
+        },
+        "arch/arm64/include/asm/io.h": {
+          "sha256": "65c6cf9084dab1ff912ecf8af76c77c7ab8cf9bb48ca30357c1bf20251825ea8"
+        },
+        "arch/arm64/include/asm/kernel-pgtable.h": {
+          "sha256": "1bbff513327bf62dbc2e0783cf5aa64aae6e67bb3037a83e66b3d5befb48adba"
+        },
+        "arch/arm64/include/asm/memory.h": {
+          "sha256": "4a5433a12088bcec0766fd9c311695a2b20469e629aa112378b0c4bbb44c930c"
+        },
+        "arch/arm64/include/asm/pgtable-hwdef.h": {
+          "sha256": "2ed97178a95513598ece754695fbe5feb8dcc1209096f0b19a9a08342138e527"
+        },
+        "arch/arm64/include/asm/pgtable.h": {
+          "sha256": "0a168f2f824743ddce95277f7b3d6ca9e9e8b19e747e1cc69176a849178720e6"
+        },
+        "arch/arm64/include/asm/processor.h": {
+          "sha256": "b09c156fa8a5c9f6440f586dd1481031f4bf3291fdaa237db63441600a3dae2c"
+        },
+        "arch/arm64/kernel/head.S": {
+          "sha256": "78ac6730b5db8eb0b2b9ae66d91084ff85f9e9bd6c1ecf6dbab3ad42d0708ced"
+        },
+        "arch/arm64/kernel/setup.c": {
+          "sha256": "9590e4a0b065491c6dc54825ddbe4090cbe9ce0c6401900987f811e0dc408775"
+        },
+        "arch/arm64/mm/fault.c": {
+          "sha256": "9033cf1b558d5bd32047d7715fdb6cf0c3e3f8fc1c0083a2ae8ac976fc3e0740"
+        },
+        "arch/arm64/mm/init.c": {
+          "sha256": "6643d18878e5bc510b8734bff589b0aeeaad44960a9897dc4804b690c63652fc"
+        },
+        "arch/arm64/mm/mmu.c": {
+          "sha256": "61d33378e16f41c94c61c124167985319887e37535d7955753b3d90b7e7ddb8a"
+        },
+        "arch/arm64/mm/proc.S": {
+          "sha256": "40d321fa411c830ab9ca7f0af1d337dea51e89fc77b5ab59e31a012df4716b96"
+        },
+        "include/linux/font.h": {
+          "sha256": "a03ac58c54b10986afdc1ebb4def4673f62707dd72f11583c94fd49d7104e87b"
+        },
+        "include/linux/init.h": {
+          "sha256": "e0c0b9ede1f5eb4a7a1ec8b273df6275bea04c98b2c35fadea1de308e8498e36"
+        },
+        "include/linux/io.h": {
+          "sha256": "04f2a2ac38170faa2cc42da2f6071f0c6eebdc73ab00b6e6a0c79e67f27c60e4"
+        },
+        "include/linux/ioport.h": {
+          "sha256": "f269347facb5ea0eb0175b56496204bd320c1a796e46d6e1270c0fc3004ae66c"
+        },
+        "include/linux/kmsg_dump.h": {
+          "sha256": "3d66a8bc4da57fa9c55161f0d156198fa2647acf789b92bb6ae7be35b6f3a1c2"
+        },
+        "include/linux/memblock.h": {
+          "sha256": "5a408bb1e08b73911613e01490c22525b430ca89f96fe95be11bb1e939359324"
+        },
+        "include/linux/of.h": {
+          "sha256": "29035bf9fa9669140504e494e52ba7be683ebcbdbc7e199845c510b4dba3fcad"
+        },
+        "include/linux/of_address.h": {
+          "sha256": "661255186e0a3b5050f9489e971685553b8e63c39e399b4844f40fadbcde5d41"
+        },
+        "include/linux/panic.h": {
+          "sha256": "9562c474ec1133009f0ed33bc1f32d86052d3466b77b9dee7b904a9714f668e9"
+        },
+        "init/main.c": {
+          "sha256": "4f3f861d74b5e5e673427364b18171a6a83223e466083efd05400f5667434d5b"
+        },
+        "kernel/module/main.c": {
+          "sha256": "33f7a532216bccc12ab7c9f87b903fce7f3e15af31e2e6c22d41a070f2cb8bda"
+        },
+        "kernel/module/version.c": {
+          "sha256": "59e095d2e241f81f9148ace8e62a557376ec74f904a349f27aa1504737165ac0"
+        },
+        "kernel/printk/printk.c": {
+          "sha256": "e4de4783b579b29a6b6c644ebc1657147ee56473d8716bb84880ce6c276100f9"
+        },
+        "kernel/reboot.c": {
+          "sha256": "2ac6cc43f7b33f0153b031e441de7aa126c1c89936c544226fe8706fcb01913a"
+        },
+        "lib/fonts/Kconfig": {
+          "sha256": "5649182b92c99ae891315a1e5ebf8483aa21b60595fa4ed0d817888dea6f66b4"
+        },
+        "mm/util.c": {
+          "sha256": "309161258dc294d8b00ac4bc6780653b623982b61a40cf8a2b04d0e90dcb2cb7"
+        }
+      }
+    }
+  }
+}
