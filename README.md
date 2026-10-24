@@ -35,19 +35,53 @@
 - [x] 添加了对[Mountify](https://github.com/backslashxx/mountify)模块的支持
 - [x] 加入Re:Kernel支持，与Freezer，NoActive等软件配合降低功耗
 - [x] 加入内核防格基带保护(By [@showdo](https://github.com/showdo))，有效防止恶意格机脚本/程序对系统分区数据的破坏
-## VA48 r16 与屏幕故障日志（SM8650 / 6.1.118）
-**已测试范围：VA48 基础 r16 补丁已由用户在一加 ACE5、6.1.118 内核上测试正常开机；其他机型和内核版本均未测试。新增屏幕故障日志尚未实机验证。**
+## VA48 r16 与可选故障日志（现有 6.1.x 入口）
 
-在 Actions 的 `6.1.118 欧加真OKI内核快速构建` 中可独立勾选以下两个选项，默认均关闭：
+**实机验证范围：VA48 基础 r16 补丁仅由用户在一加 ACE5、6.1.118 内核上测试正常开机。其他版本、设备及本次新版屏幕日志均未实机验证。**
 
-- `va48_enable`：应用 `va48-r16-mmap-rnd-cap` 的 14 处修改，启用用户态 VA48、内核态 VA39 布局、24 位 mmap ASLR 上限和 VA39 窗口内的 mmap_base 保护。关闭时不应用 VA48 补丁、不切换 VA_BITS。
-- `boot_log_enable`：启用新的 `patch_boot_log.py`。panic/oops 时将最近的内核日志（包括可用的故障地址、PC/LR 和调用栈）显示到屏幕；重启时显示请求来源和原因；启动期间显示最后正在执行的 initcall，不再跟踪 init 系统调用或刷进程状态。可用于 VA39 或 VA48 构建。关闭时不注入日志代码、不改动 panic 超时。
+仓库全部 7 个 `fastbuild_6.1.*.yml` 入口现已接入独立开关，默认关闭。源码预检通过表示已知代码结构匹配，不能代替内核编译、厂商模块和实机启动验证。
 
-屏幕日志沿用原 beacon 的一加12连续启动画面地址 `0xd5100000`、1264×2780 分辨率和5056字节步长，其他设备需先确认 framebuffer 配置。屏幕沿用 ASCII 字库，因此屏幕提示及内核原始日志保留英文；使用说明和新增解释性注释采用中文。新版不改写启动验证状态或看门狗参数。panic 时请求停留在日志画面，但硬件/厂商看门狗仍可能重启设备。
+| 内核入口 | 源码平台 / 基础机型 | 本次源码兼容检查 | 实机启动 |
+| --- | --- | --- | --- |
+| 6.1.57、6.1.75 | SM8650 / 一加12 | 两个补丁锚点通过 | 未测试 |
+| 6.1.115、6.1.134 | MT6989 / 一加 ACE5 竞速版 | 两个补丁锚点通过 | 未测试 |
+| 6.1.118 | SM8650 / 一加12源码 | 两个补丁锚点通过；旧实现 Actions #38 编译成功 | 基础 r16 仅一加 ACE5 已开机 |
+| 6.1.128 | MT6897 / 一加平板 | 两个补丁锚点通过 | 未测试 |
+| 6.1.141 | SM8650 / 一加12 | 两个补丁锚点通过 | 未测试 |
 
-屏幕有限，只显示内核日志尾部；完整日志仍应从设备现有的 pstore/ramoops（若支持）或串口获取。只有能够进入 panic/oops 处理的故障才能显示现场；分页初始化之前、断电、显示失效或完全锁死时无法保证输出。最后一个 initcall 仅是定位线索，非根因结论。
+- `va48_enable`：保留成功 r16 的 14 项修改，启用用户态 VA48、内核态 VA39、4 KiB 页面、四级页表、24 位 mmap ASLR 上限及 mmap_base 越界保护。仍保留原 r16 的模块符号 CRC 放宽和 vermagic 检查；这不能保证任意厂商模块 ABI 兼容，模块必须与设备和内核版本匹配。
+- `boot_log_enable`：独立启用 panic/oops 内核日志尾部、可用的 PC/LR/调用栈、重启来源和最后 initcall 提示。可用于 VA39 或 VA48。关闭时不注入日志代码、不改 panic 超时。
+- `boot_log_profile`：默认 `auto`，只读取设备树 `/chosen` 中唯一、参数完整且格式支持的 `simple-framebuffer`。未发现有效缓冲区时仅输出内核日志提示，关闭屏幕绘字并保持原 panic 超时；不会自动套用一加12的物理地址。
+- `oneplus12-legacy`：显式使用旧布局 `0xd5100000 / 1264×2780 / stride=5056`。名称只代表历史参数，不代表所有一加12/ACE5固件兼容，需先核对目标设备。
+- `custom`：在 `boot_log_framebuffer` 填写 `base=0x...,width=...,height=...,stride=...,format=x8r8g8b8`。也支持 `a8r8g8b8`、`x8b8g8r8`、`a8b8g8r8`，只绘黑白文字。地址、尺寸、步长、溢出和总长度均有检查。参数直接作为数据传入，不作为 shell 执行。
 
-补丁指纹、修改数量与生成的内核配置均在构建时校验，开关状态写入发布说明和 ZIP 注释。此功能只接入 6.1.118 快速构建入口；`va48_boot.yml` 仍是始终启用 VA48 的专用验证入口。上游默认 KSU 已更名为 BakaSU。新日志代码需在目标设备验证，不能把源码校验视为开机保证。
+无论选择哪种屏幕配置，运行时都要求整个缓冲区位于保留内存中。设备树展开后核对参数与保留范围，`core_initcall` 再建立持久映射；不使用任意物理地址的 `phys_to_virt`。屏幕可用后 panic 才请求停留在日志画面，厂商/硬件看门狗仍可能重启。`core_initcall` 之前、断电、显示被驱动接管或完全锁死时无法保证屏幕输出。最后 initcall 只是定位线索，不是故障根因结论。
+
+日志补丁会让隐藏的 `FONT_SUPPORT` 默认内置，避免仅写 defconfig 后被 Kconfig 丢弃；生成配置仍核对 `FONT_SUPPORT=y` 和 `FONT_8x16=y`。屏幕使用 ASCII 字库，因此屏幕提示和原始内核日志保留英文；说明和新增解释性注释为中文。屏幕空间只容纳日志尾部，完整日志应从设备已有的 pstore/ramoops（若支持）或串口获取。
+
+### 预检与复现
+
+补丁器支持 `--check` 全量预检且不写源码。`configure_features.py` 统一完成所选补丁的预检、应用和 defconfig 设置，失败时恢复本入口涉及的全部源码。生成 `.config` 后检查实际 VA_BITS、页表级数、页面大小、ASLR 和日志依赖；不兼容的 KASAN、16/64 KiB 页面、重复补丁或未知源码结构会被拒绝。5.15、6.6 等其他内核系列尚未适配。
+
+```bash
+python3 other_patch/va48/patch_va48.py /path/to/common --check
+python3 other_patch/va48/patch_boot_log.py /path/to/common --profile auto --check
+python3 other_patch/va48/configure_features.py apply /path/to/common \
+  --expected-version 6.1.118 --va48 true --boot-log true \
+  --profile auto --evidence ./feature-evidence
+# 在 common 内生成 out/.config 后运行：
+python3 other_patch/va48/configure_features.py verify /path/to/common \
+  --expected-version 6.1.118 --va48 true --boot-log true --evidence ./feature-evidence
+```
+
+构建始终使用 checkout 的同一提交中的脚本，校验指纹和脚本副本，并上传 `feature-evidence-*`（补丁预检/应用日志、实际配置、配置检查结果和输入选项）。状态与屏幕配置写入发布说明和 ZIP 注释。`va48_boot.yml` 保留为始终启用 VA48 的 6.1.118 专用入口。
+
+`VA48 与日志兼容检查` Actions 提供固定源码提交的 7 版本回归检查，记录在 `other_patch/va48/baseline-sources.json`。本地可运行：
+
+```bash
+python3 other_patch/va48/tests/check_compatibility.py
+python3 -m unittest discover -s other_patch/va48/tests -p 'test_*.py'
+```
 
 ## 待实现：
 - [ ] zram内置化，无需外置zram.ko挂载 ~~（有了新版 lz4&zstd 补丁真的还有必要吗）~~
