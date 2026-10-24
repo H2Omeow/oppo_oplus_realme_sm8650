@@ -1,0 +1,44 @@
+name: VA48 与日志兼容检查
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'other_patch/va48/**'
+      - 'scripts/patch_va48.py'
+      - '.github/workflows/fastbuild_6.1.*.yml'
+      - '.github/workflows/va48*.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'other_patch/va48/**'
+      - 'scripts/patch_va48.py'
+      - '.github/workflows/fastbuild_6.1.*.yml'
+      - '.github/workflows/va48*.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: 核对七版本源码、开关组合及失败时不写入
+        run: |
+          set -euo pipefail
+          mkdir -p compatibility-evidence
+          python3 other_patch/va48/tests/check_compatibility.py --report compatibility-evidence/matrix.json 2>&1 | tee compatibility-evidence/matrix.log
+      - name: 检查屏幕日志参数和生成代码的边界
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s other_patch/va48/tests -p 'test_*.py' -v 2>&1 | tee compatibility-evidence/tests.log
+      - name: 上传兼容检查结果
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: va48-compatibility-evidence
+          path: compatibility-evidence/
+          if-no-files-found: warn
+          archive: true

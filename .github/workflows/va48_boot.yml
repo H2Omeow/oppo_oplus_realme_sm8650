@@ -106,6 +106,9 @@ jobs:
       actions: write
       contents: read
     steps:
+      - name: 检出当前构建仓库
+        uses: actions/checkout@v4
+
       - name: 安装环境依赖+初始化源码仓库及llvm-Clang20工具链
         run: |
           rm -rf kernel_workspace
@@ -158,17 +161,10 @@ jobs:
       - name: 应用 VA48(用户态) / VA39(内核态) 解耦补丁
         run: |
           cd kernel_workspace/common
-          echo "正在下载 VA48 解耦补丁器..."
-          for i in 1 2 3; do
-            wget -q "https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/va48/patch_va48.py" -O /tmp/patch_va48.py && break
-            echo "  重试 $i ..."; sleep 3
-          done
-          test -s /tmp/patch_va48.py || { echo "::error::VA48 补丁器下载失败"; exit 1; }
-          VA48_SHA=2cea005cfe18bb88631d2011af5918bdc18e86c7f855b65248f88d1737e7f063
-          got_sha=$(sha256sum /tmp/patch_va48.py | cut -d' ' -f1)
-          echo "补丁器 sha256: $got_sha"
-          test "$got_sha" = "$VA48_SHA" || { echo "::error::VA48 补丁器指纹不符"; exit 1; }
-          python3 /tmp/patch_va48.py .
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/other_patch/va48/configure_features.py" apply . \
+            --expected-version 6.1.118 --va48 true --boot-log false \
+            --evidence "$GITHUB_WORKSPACE/feature-evidence"
           if grep -RInE 'va48_beacon|va48_fix_cmdline|VA48 BEACON' \
               arch/arm64/kernel/head.S arch/arm64/kernel/setup.c \
               arch/arm64/kernel/syscall.c arch/arm64/kernel/traps.c \
@@ -656,15 +652,12 @@ jobs:
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
+          set -euo pipefail
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig
+          python3 "$GITHUB_WORKSPACE/other_patch/va48/configure_features.py" verify . \
+            --expected-version 6.1.118 --va48 true --boot-log false \
+            --evidence "$GITHUB_WORKSPACE/feature-evidence"
 
-          # ===== VA48: flip the ARM64_VA_BITS choice on the generated .config =====
-          echo "--- [VA48] before ---"
-          grep -E '^(CONFIG_ARM64_VA_BITS|CONFIG_PGTABLE_LEVELS)' out/.config || true
-          ./scripts/config --file out/.config -d ARM64_VA_BITS_39 -e ARM64_VA_BITS_48
-          # 信标镜像: panic 挂死而不是立刻重启, 让屏幕上的色带留住
-          ./scripts/config --file out/.config --set-val PANIC_TIMEOUT 0
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error olddefconfig
           echo "--- [VA48] after ---"
           grep -E '^(CONFIG_ARM64_VA_BITS|CONFIG_PGTABLE_LEVELS|CONFIG_ARM64_4K_PAGES|CONFIG_MODVERSIONS)' out/.config || true
 
@@ -835,6 +828,15 @@ jobs:
         with:
           name: ccache-debug-log
           path: ${{ github.workspace }}/kernel_workspace/ccache.log
+          archive: true
+
+      - name: 上传 VA48 验证记录
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: va48-feature-evidence
+          path: ${{ github.workspace }}/feature-evidence/
+          if-no-files-found: warn
           archive: true
 
       - name: 上传 ZIP 工件

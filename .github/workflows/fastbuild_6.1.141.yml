@@ -7,6 +7,10 @@ env:
   SUB_VERSION: '141'
   KERNEL_NAME: 'android14-11-o-gca13bffobf09'
   CCACHE_KEY: ccache-ecsv4-6.1.141
+  FEATURE_VA48: ${{ inputs.va48_enable }}
+  FEATURE_BOOT_LOG: ${{ inputs.boot_log_enable }}
+  BOOT_LOG_PROFILE: ${{ inputs.boot_log_profile }}
+  BOOT_LOG_FRAMEBUFFER: ${{ inputs.boot_log_framebuffer }}
 
 on:
   workflow_dispatch:
@@ -22,6 +26,30 @@ on:
           - 'ksunext'
           - 'ksu'
           - 'none'
+      va48_enable:
+        description: '是否启用 VA48 r16 用户空间扩展（用户态48位/内核态39位；仅一加ACE5的6.1.118验证开机）'
+        required: true
+        type: boolean
+        default: false
+      boot_log_enable:
+        description: '是否启用故障日志（panic/oops内核日志、调用栈及最后initcall；屏幕取决于设备配置）'
+        required: true
+        type: boolean
+        default: false
+      boot_log_profile:
+        description: '屏幕配置：auto读取设备树；旧一加12布局需自行确认；custom填写下项'
+        required: true
+        type: choice
+        default: 'auto'
+        options:
+          - 'auto'
+          - 'oneplus12-legacy'
+          - 'custom'
+      boot_log_framebuffer:
+        description: '仅custom：base=0x...,width=...,height=...,stride=...,format=x8r8g8b8（必须为保留内存）'
+        required: false
+        type: string
+        default: ''
       susfs_enable:
         description: '是否开启susfs(用于增强隐藏环境挂载功能; 可能轻微增加耗电，上游更新导致不稳定时或不需要可关闭)'
         required: true
@@ -106,6 +134,9 @@ jobs:
       actions: write
       contents: read
     steps:
+      - name: 检出当前构建仓库
+        uses: actions/checkout@v4
+
       - name: 安装环境依赖+初始化源码仓库及llvm-Clang20工具链
         run: |
           rm -rf kernel_workspace
@@ -553,6 +584,16 @@ jobs:
             done
           fi
            
+      - name: 预检并配置 VA48 与故障日志
+        if: inputs.va48_enable || inputs.boot_log_enable
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/other_patch/va48/configure_features.py" apply kernel_workspace/common \
+            --expected-version "${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}" \
+            --va48 "$FEATURE_VA48" --boot-log "$FEATURE_BOOT_LOG" \
+            --profile "$BOOT_LOG_PROFILE" --framebuffer "$BOOT_LOG_FRAMEBUFFER" \
+            --evidence "$GITHUB_WORKSPACE/feature-evidence"
+
       - name: 构建内核
         run: |
           WORKDIR="$(pwd)"
@@ -624,8 +665,16 @@ jobs:
           sudo rm -rf /usr/local/lib/android &
           sudo rm -rf /opt/ghc &
           sudo rm -rf /opt/hostedtoolcache/CodeQL &
-          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig &&
+          set -euo pipefail
+          make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="ccache clang" LD="ld.lld" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error gki_defconfig
+          if [[ "$FEATURE_VA48" == "true" || "$FEATURE_BOOT_LOG" == "true" ]]; then
+            python3 "$GITHUB_WORKSPACE/other_patch/va48/configure_features.py" verify . \
+              --expected-version "${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}" \
+              --va48 "$FEATURE_VA48" --boot-log "$FEATURE_BOOT_LOG" \
+              --evidence "$GITHUB_WORKSPACE/feature-evidence"
+          fi
           make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC="$(pwd)/cc-wrapper" LD="$(pwd)/ld-wrapper" HOSTLD=ld.lld O=out KCFLAGS+=-O2 KCFLAGS+=-Wno-error Image
+          test -s out/arch/arm64/boot/Image
           
           # 编译后时间劫持二次校验
           echo "--- 编译后环境时间: $(LD_PRELOAD=$PRELOAD_LIBS date) ---"
@@ -709,6 +758,10 @@ jobs:
           echo "Kernel Ver: $FULL_VERSION" >> ./ak3.log
           echo "KSU Branch: ${KSU_TYPENAME}" >> ./ak3.log
           echo "KSU Ver: ${KSUVER}" >> ./ak3.log
+          echo "VA48 r16: $FEATURE_VA48" >> ./ak3.log
+          echo "故障日志: $FEATURE_BOOT_LOG" >> ./ak3.log
+          echo "屏幕配置: $BOOT_LOG_PROFILE" >> ./ak3.log
+          echo "实机验证: 基础r16仅一加ACE5/6.1.118；其他版本及新版日志未实机验证" >> ./ak3.log
           echo "susfs: ${{ github.event.inputs.susfs_enable }}" >> ./ak3.log
           echo "KPM: ${{ github.event.inputs.kpm_enable }}" >> ./ak3.log
           echo "LZ4: ${{ github.event.inputs.lz4_enable }}" >> ./ak3.log
@@ -727,6 +780,15 @@ jobs:
         with:
           name: ccache-debug-log
           path: ${{ github.workspace }}/kernel_workspace/ccache.log
+          archive: true
+
+      - name: 上传 VA48 与故障日志验证记录
+        if: always() && (inputs.va48_enable || inputs.boot_log_enable)
+        uses: actions/upload-artifact@v7
+        with:
+          name: feature-evidence-6.1.${{ env.SUB_VERSION }}
+          path: ${{ github.workspace }}/feature-evidence/
+          if-no-files-found: warn
           archive: true
 
       - name: 上传 ZIP 工件
@@ -792,6 +854,10 @@ jobs:
           - 编译时间: ${{ env.TIME_FORM }}
           - 机型：欧加真骁龙8Gen3通用 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} 内核（基于一加12 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} 版官方OKI源码）
           - KSU分支：${{ env.KSU_TYPENAME }}
+          - VA48 r16 用户空间扩展：${{ inputs.va48_enable }}
+          - 故障日志：${{ inputs.boot_log_enable }}，屏幕配置：${{ inputs.boot_log_profile }}
+          - 实机验证范围：基础 r16 仅一加 ACE5 / 6.1.118 已测试正常开机；其他版本、设备及新版日志未实机验证。
+          - 屏幕自动模式只读取有效的设备树 simple-framebuffer；无法识别时关闭屏幕输出，不猜测地址。
           - susfs支持：${{ github.event.inputs.susfs_enable }}
           - KPM支持 ：${{ github.event.inputs.kpm_enable }}
           - LZ4支持：${{ github.event.inputs.lz4_enable }}
