@@ -1,0 +1,26 @@
+test_https_and_full_hash_required (__main__.ArchiveSafetyTests.test_https_and_full_hash_required) ... ok
+test_https_download_hash_mismatch_refused (__main__.ArchiveSafetyTests.test_https_download_hash_mismatch_refused) ... ok
+test_tar_path_traversal_absolute_symlink_and_hardlink_rejected_before_write (__main__.ArchiveSafetyTests.test_tar_path_traversal_absolute_symlink_and_hardlink_rejected_before_write) ... ok
+test_zip_symlink_traversal_and_case_collision_rejected (__main__.ArchiveSafetyTests.test_zip_symlink_traversal_and_case_collision_rejected) ... ok
+test_complete_pipeline_and_read_only_cpu_and_original_sdk (__main__.BuildPipelineTests.test_complete_pipeline_and_read_only_cpu_and_original_sdk) ... ok
+test_conflicting_duplicate_inside_one_symbol_table_refused (__main__.BuildPipelineTests.test_conflicting_duplicate_inside_one_symbol_table_refused) ... ok
+test_cpu_change_detected_and_success_artifact_removed (__main__.BuildPipelineTests.test_cpu_change_detected_and_success_artifact_removed) ... ok
+test_cpu_configuration_or_stale_generated_header_refused (__main__.BuildPipelineTests.test_cpu_configuration_or_stale_generated_header_refused) ... ok
+test_dependency_crc_export_type_and_namespace_conflicts_refused (__main__.BuildPipelineTests.test_dependency_crc_export_type_and_namespace_conflicts_refused) ... ok
+test_enforced_module_signing_refused_without_trusted_key (__main__.BuildPipelineTests.test_enforced_module_signing_refused_without_trusted_key) ... ok
+test_https_zip_hash_verified_extraction_and_full_pipeline (__main__.BuildPipelineTests.test_https_zip_hash_verified_extraction_and_full_pipeline) ... ok
+test_make_error_or_modpost_warning_is_a_hard_failure (__main__.BuildPipelineTests.test_make_error_or_modpost_warning_is_a_hard_failure) ... ok
+test_missing_common_artifact_writes_failure_evidence (__main__.BuildPipelineTests.test_missing_common_artifact_writes_failure_evidence) ... ok
+test_missing_dependency_and_unknown_gpu_source_hard_fail (__main__.BuildPipelineTests.test_missing_dependency_and_unknown_gpu_source_hard_fail) ... ok
+test_missing_vendor_symvers_never_runs_make (__main__.BuildPipelineTests.test_missing_vendor_symvers_never_runs_make) ... ok
+test_module_arch_feature_vermagic_and_crc_validation (__main__.BuildPipelineTests.test_module_arch_feature_vermagic_and_crc_validation) ... ok
+test_prior_image_difference_allows_sdk_reuse_but_image_stays_protected (__main__.BuildPipelineTests.test_prior_image_difference_allows_sdk_reuse_but_image_stays_protected) ... ok
+test_same_config_but_different_cpu_layout_header_refused (__main__.BuildPipelineTests.test_same_config_but_different_cpu_layout_header_refused) ... ok
+test_unsafe_manifest_path_refused (__main__.BuildPipelineTests.test_unsafe_manifest_path_refused) ... ok
+test_vendor_configuration_drift_after_make_refused (__main__.BuildPipelineTests.test_vendor_configuration_drift_after_make_refused) ... ok
+test_wrong_binding_never_runs_make (__main__.BuildPipelineTests.test_wrong_binding_never_runs_make) ... ok
+
+----------------------------------------------------------------------
+Ran 21 tests in 7.417s
+
+OK

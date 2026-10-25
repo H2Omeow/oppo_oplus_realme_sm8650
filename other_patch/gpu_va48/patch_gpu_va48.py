@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Experimental KGSL GPU-only VA48 patcher for the audited SM8650 source.
+"""Experimental KGSL GPU-only VA48 patcher for audited SM8650 vendor sources.
 
 Pass the graphics-kernel directory (or its parent). --check validates every
 original anchor without writing. --patch writes a unified diff after successful
@@ -19,11 +19,25 @@ import tempfile
 
 FILES = ("Kconfig", "Kbuild", "kgsl_iommu.h", "kgsl_iommu.c")
 MARKER = "QCOM_KGSL_GPU_VA48"
-BASELINE_SHA256 = {
-    "Kconfig": "4f5161d66c500cf1be21a9d537c52288a7d358203cd6e8ed8829fbad5a6fa1d3",
-    "Kbuild": "ca56d21e6cafe11cc7f17ed2062257dd1d198726da9c5e6d0905177cee4b8a22",
-    "kgsl_iommu.h": "bbd552051b4212832ee3480d9bb6d4e1fb83c8300e314313a9a707de1f1af1d9",
-    "kgsl_iommu.c": "158fa146b934d10ddbdfc34e678863b00b2a0afc9f8b56e00c0193c5a07fc033",
+SOURCE_BASELINES = {
+    "oneplus/sm8650_u_14.0.0_oneplus12": {
+        "Kconfig": "88a36ffde3ceb0e20dbe0bcc6eefc4b05f7a4e3fc596d586b1e017a9c2727987",
+        "Kbuild": "7110a09e4d4c1aaa6cb979b93e35108c47bc85b2b764c5565438b794d32be6c0",
+        "kgsl_iommu.h": "ea0092046d65ec41eefa9cfa4e485303e78971e16d28fdb1877ff2495b73bac9",
+        "kgsl_iommu.c": "5f2e2f1e6822e1e37727b6e7a6ed14821787e5ea5f1049113a6200c674b0fc0f",
+    },
+    "oneplus/sm8650_v_15.0.0_oneplus12": {
+        "Kconfig": "4f5161d66c500cf1be21a9d537c52288a7d358203cd6e8ed8829fbad5a6fa1d3",
+        "Kbuild": "ca56d21e6cafe11cc7f17ed2062257dd1d198726da9c5e6d0905177cee4b8a22",
+        "kgsl_iommu.h": "bbd552051b4212832ee3480d9bb6d4e1fb83c8300e314313a9a707de1f1af1d9",
+        "kgsl_iommu.c": "d4b9adc87334e9ec37611ef82f53015d1601a7f737139221caa9648984bb73a1",
+    },
+    "oneplus/sm8650_b_16.0.0_oneplus12": {
+        "Kconfig": "4f5161d66c500cf1be21a9d537c52288a7d358203cd6e8ed8829fbad5a6fa1d3",
+        "Kbuild": "ca56d21e6cafe11cc7f17ed2062257dd1d198726da9c5e6d0905177cee4b8a22",
+        "kgsl_iommu.h": "bbd552051b4212832ee3480d9bb6d4e1fb83c8300e314313a9a707de1f1af1d9",
+        "kgsl_iommu.c": "158fa146b934d10ddbdfc34e678863b00b2a0afc9f8b56e00c0193c5a07fc033",
+    },
 }
 
 
@@ -36,6 +50,21 @@ def replace_one(text: str, old: str, new: str, label: str) -> str:
     if count != 1:
         raise PatchError(f"{label}: expected one original anchor, found {count}")
     return text.replace(old, new, 1)
+
+
+def identify_baseline(originals: dict[str, str]) -> str:
+    """Require all four files from one audited tree; reject mixed revisions.
+
+    The baseline identifies only GPU source. A kernel version (including
+    6.1.141) is not a substitute for a matching vendor SDK and module ABI.
+    """
+    actual = {name: hashlib.sha256(originals[name].encode()).hexdigest()
+              for name in FILES}
+    for branch, expected in SOURCE_BASELINES.items():
+        if actual == expected:
+            return branch
+    raise PatchError("unknown source fingerprint or mixed source revisions; "
+                     "refusing all source writes")
 
 
 def build_changes(root: Path) -> tuple[dict[str, str], dict[str, str]]:
@@ -225,9 +254,7 @@ int kgsl_iommu_bind(struct kgsl_device *device, struct platform_device *pdev)
         "\tkgsl_iommu_probe_gpu_va48(device);\n\n"
         "\t/* Probe the default pagetable */\n", "probe before first pagetable")
     changed["kgsl_iommu.c"] = c
-    for name in FILES:
-        if hashlib.sha256(originals[name].encode()).hexdigest() != BASELINE_SHA256[name]:
-            raise PatchError(f"{name}: unknown source fingerprint; refusing all source writes")
+    identify_baseline(originals)
     return originals, changed
 
 
@@ -277,12 +304,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.patch and args.patch.resolve().is_relative_to(root):
             raise PatchError("the unified diff must be saved outside the source tree")
         originals, changed = build_changes(root)
+        baseline = identify_baseline(originals)
         if args.patch:
             args.patch.parent.mkdir(parents=True, exist_ok=True)
             args.patch.write_text(make_patch(originals, changed), encoding="utf-8", newline="\n")
         if not args.check:
             apply_changes(root, originals, changed)
         print("GPU-only VA48 preflight passed" if args.check else "Applied GPU-only VA48 patch")
+        print(f"Audited GPU source baseline: {baseline}")
         for name in FILES:
             sha = hashlib.sha256(changed[name].encode()).hexdigest()
             print(f"{name}: patched sha256={sha}")

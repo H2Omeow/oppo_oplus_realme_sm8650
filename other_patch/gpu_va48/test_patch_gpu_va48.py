@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run: python test_patch_gpu_va48.py --source GRAPHICS_KERNEL [--cpu-patch FILE]."""
+"""Run with --source GRAPHICS_KERNEL for each audited tree, plus --cpu-patch FILE."""
 
 import argparse
 import hashlib
@@ -16,6 +16,7 @@ SPEC = importlib.util.spec_from_file_location("gpu_patch", HERE / "patch_gpu_va4
 gpu_patch = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(gpu_patch)
 SOURCE = None
+SOURCES = []
 CPU_PATCH = None
 
 
@@ -77,6 +78,43 @@ class GpuOnlyVa48Tests(unittest.TestCase):
         k.write_text(k.read_text() + "\n# unaudited source drift\n", newline="\n")
         before = hashes(self.root)
         with self.assertRaisesRegex(gpu_patch.PatchError, "unknown source fingerprint"):
+            self.patched()
+        self.assertEqual(hashes(self.root), before)
+
+    def test_complete_baseline_identified(self):
+        originals, _ = self.patched()
+        branch = gpu_patch.identify_baseline(originals)
+        self.assertIn(branch, gpu_patch.SOURCE_BASELINES)
+        actual = {name: hashlib.sha256(originals[name].encode()).hexdigest()
+                  for name in gpu_patch.FILES}
+        self.assertEqual(actual, gpu_patch.SOURCE_BASELINES[branch])
+        for expected in gpu_patch.SOURCE_BASELINES.values():
+            self.assertEqual(set(expected), set(gpu_patch.FILES))
+
+    def test_mixed_known_baselines_refuse_all_writes(self):
+        originals, _ = self.patched()
+        mixed = None
+        # Use actual downloaded files. V15/B16 differ in only one file, so
+        # swapping that file is another complete valid tree, not a mixed one.
+        for source in SOURCES:
+            for name in gpu_patch.FILES:
+                alternate = (source / name).read_text(encoding="utf-8")
+                if alternate == originals[name]:
+                    continue
+                candidate = dict(originals, **{name: alternate})
+                try:
+                    gpu_patch.identify_baseline(candidate)
+                except gpu_patch.PatchError:
+                    mixed = name, alternate
+                    break
+            if mixed:
+                break
+        if mixed is None:
+            self.skipTest("pass U14 and V15/B16 sources to check real mixed revisions")
+        name, alternate = mixed
+        (self.root / name).write_text(alternate, encoding="utf-8", newline="\n")
+        before = hashes(self.root)
+        with self.assertRaisesRegex(gpu_patch.PatchError, "mixed source revisions"):
             self.patched()
         self.assertEqual(hashes(self.root), before)
 
@@ -151,10 +189,16 @@ class GpuOnlyVa48Tests(unittest.TestCase):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source", required=True, type=Path)
+    parser.add_argument("--source", required=True, action="append", type=Path,
+                        help="audited GPU tree; repeat to test multiple baselines")
     parser.add_argument("--cpu-patch", type=Path)
     args, remaining = parser.parse_known_args()
-    SOURCE = args.source.resolve()
+    SOURCES = [source.resolve() for source in args.source]
     CPU_PATCH = args.cpu_patch.resolve() if args.cpu_patch else None
-    ORIGINAL_SOURCE_HASHES = hashes(SOURCE)
-    unittest.main(argv=[sys.argv[0], "-v", *remaining])
+    successful = True
+    for SOURCE in SOURCES:
+        ORIGINAL_SOURCE_HASHES = hashes(SOURCE)
+        print(f"\nTesting audited source: {SOURCE}", flush=True)
+        result = unittest.main(argv=[sys.argv[0], "-v", *remaining], exit=False).result
+        successful = result.wasSuccessful() and successful
+    raise SystemExit(0 if successful else 1)

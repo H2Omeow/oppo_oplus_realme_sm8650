@@ -1,0 +1,23 @@
+{
+  "sdk_format_version": 1,
+  "kernel_version": "6.1.118",
+  "common_out_sha256": {
+    ".config": "REPLACE_WITH_CURRENT_COMMON_OUT_CONFIG_SHA256",
+    "vmlinux.symvers": "REPLACE_WITH_CURRENT_COMMON_OUT_VMLINUX_SYMVERS_SHA256",
+    "System.map": "REPLACE_WITH_CURRENT_COMMON_OUT_SYSTEM_MAP_SHA256"
+  },
+  "common_source_sha256": {
+    "arch/arm64/include/asm/memory.h": "REPLACE_WITH_CURRENT_COMMON_SOURCE_MEMORY_H_SHA256",
+    "arch/arm64/include/asm/page.h": "REPLACE_WITH_CURRENT_COMMON_SOURCE_PAGE_H_SHA256",
+    "arch/arm64/include/asm/processor.h": "REPLACE_WITH_CURRENT_COMMON_SOURCE_PROCESSOR_H_SHA256",
+    "arch/arm64/include/asm/pgtable-hwdef.h": "REPLACE_WITH_CURRENT_COMMON_SOURCE_PGTABLE_HWDEF_H_SHA256"
+  },
+  "vendor_kernel": "kernel_platform/msm-kernel",
+  "vendor_out": "out/vendor-kernel",
+  "gpu_source": "vendor/qcom/opensource/graphics-kernel",
+  "dependency_symvers": [
+    "out/vendor-kernel/Module.symvers",
+    "out/hw-fence/Module.symvers",
+    "out/synx/Module.symvers"
+  ]
+}
