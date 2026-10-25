@@ -6,6 +6,9 @@ env:
   KERNEL_VERSION: '6.1'
   SUB_VERSION: '118'
   KERNEL_NAME: 'android14-11-o-gca13bffobf09'
+  FEATURE_GPU_VA48: ${{ inputs.gpu_va48_enable }}
+  GPU_VA48_SDK_URL: ${{ inputs.gpu_va48_sdk_url }}
+  GPU_VA48_SDK_SHA256: ${{ inputs.gpu_va48_sdk_sha256 }}
   CCACHE_KEY: ccache-ecsv4-6.1.118
 
 on:
@@ -22,6 +25,21 @@ on:
           - 'ksunext'
           - 'ksu'
           - 'none'
+      gpu_va48_enable:
+        description: '实验性 Adreno GPU TTBR0 VA48（仅GPU；需下方匹配SDK；单独输出ko，不随AnyKernel安装）'
+        required: true
+        type: boolean
+        default: false
+      gpu_va48_sdk_url:
+        description: '仅GPU开启时必填：与本次GKI精确匹配的已准备vendor SDK HTTPS压缩包；见other_patch/gpu_va48/README.md'
+        required: false
+        type: string
+        default: ''
+      gpu_va48_sdk_sha256:
+        description: '仅GPU开启时必填：上述SDK压缩包的64位SHA256；缺失/不匹配直接失败'
+        required: false
+        type: string
+        default: ''
       susfs_enable:
         description: '是否开启susfs(用于增强隐藏环境挂载功能; 可能轻微增加耗电，上游更新导致不稳定时或不需要可关闭)'
         required: true
@@ -108,6 +126,20 @@ jobs:
     steps:
       - name: 检出当前构建仓库
         uses: actions/checkout@v4
+
+      - name: 检查 GPU VA48 SDK 输入
+        if: inputs.gpu_va48_enable
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, re
+          from urllib.parse import urlsplit
+          url = urlsplit(os.environ['GPU_VA48_SDK_URL'])
+          if url.scheme != 'https' or not url.hostname or url.username or url.password or url.fragment:
+              raise SystemExit('GPU VA48 requires a public HTTPS vendor SDK URL without credentials or fragment; see other_patch/gpu_va48/README.md')
+          if not re.fullmatch(r'[0-9a-fA-F]{64}', os.environ['GPU_VA48_SDK_SHA256']):
+              raise SystemExit('GPU VA48 requires the matching SDK SHA256 (64 hex digits)')
+          PY
 
       - name: 安装环境依赖+初始化源码仓库及llvm-Clang20工具链
         run: |
@@ -757,6 +789,20 @@ jobs:
           rm -f Image
           mv oImage Image
           
+      - name: 构建独立 Adreno GPU VA48 模块（不修改 CPU Image）
+        if: inputs.gpu_va48_enable
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y --no-install-recommends kmod
+          export PATH="$GITHUB_WORKSPACE/kernel_workspace/clang20/bin:$GITHUB_WORKSPACE/kernel_workspace/build-tools/bin:$PATH"
+          python3 "$GITHUB_WORKSPACE/other_patch/gpu_va48/build_gpu_va48.py" \
+            --common-source "$GITHUB_WORKSPACE/kernel_workspace/common" \
+            --common-out "$GITHUB_WORKSPACE/kernel_workspace/common/out" \
+            --sdk-url "$GPU_VA48_SDK_URL" \
+            --sdk-sha256 "$GPU_VA48_SDK_SHA256" \
+            --kernel-version "${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}" \
+            --output "$GITHUB_WORKSPACE/gpu-va48-output"
+
       - name: 克隆 AnyKernel3 并打包
         id: create_zip
         run: |
@@ -810,6 +856,7 @@ jobs:
           echo "Kernel Ver: $FULL_VERSION" >> ./ak3.log
           echo "KSU Branch: ${KSU_TYPENAME}" >> ./ak3.log
           echo "KSU Ver: ${KSUVER}" >> ./ak3.log
+          echo "GPU TTBR0 VA48: $FEATURE_GPU_VA48 (experimental; separate gpu-va48 artifact; AnyKernel installs Image only)" >> ./ak3.log
           echo "susfs: ${{ github.event.inputs.susfs_enable }}" >> ./ak3.log
           echo "KPM: ${{ github.event.inputs.kpm_enable }}" >> ./ak3.log
           echo "LZ4: ${{ github.event.inputs.lz4_enable }}" >> ./ak3.log
@@ -836,6 +883,15 @@ jobs:
         with:
           name: va48-feature-evidence
           path: ${{ github.workspace }}/feature-evidence/
+          if-no-files-found: warn
+          archive: true
+
+      - name: 上传 GPU 独立模块与验证记录
+        if: always() && inputs.gpu_va48_enable
+        uses: actions/upload-artifact@v7
+        with:
+          name: gpu-va48-6.1.${{ env.SUB_VERSION }}
+          path: ${{ github.workspace }}/gpu-va48-output/
           if-no-files-found: warn
           archive: true
 
