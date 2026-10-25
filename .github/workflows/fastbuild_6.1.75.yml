@@ -6,9 +6,7 @@ env:
   KERNEL_VERSION: '6.1'
   SUB_VERSION: '75'
   KERNEL_NAME: 'android14-11-o-gca13bffobf09'
-  FEATURE_GPU_VA48: ${{ inputs.gpu_va48_enable }}
-  GPU_VA48_SDK_URL: ${{ inputs.gpu_va48_sdk_url }}
-  GPU_VA48_SDK_SHA256: ${{ inputs.gpu_va48_sdk_sha256 }}
+  FEATURE_GPU_VA48: ${{ inputs.va48_enable || inputs.gpu_va48_enable }}
   CCACHE_KEY: ccache-ecsv4-6.1.75
   FEATURE_VA48: ${{ inputs.va48_enable }}
   FEATURE_BOOT_LOG: ${{ inputs.boot_log_enable }}
@@ -30,7 +28,7 @@ on:
           - 'ksu'
           - 'none'
       va48_enable:
-        description: '是否启用 VA48 r16 用户空间扩展（用户态48位/内核态39位；仅一加ACE5的6.1.118验证开机）'
+        description: '是否启用 VA48 r16 用户空间扩展（用户态48位/内核态39位；仅一加ACE5的6.1.118验证开机）；同时自动构建 GPU VA48 模块'
         required: true
         type: boolean
         default: false
@@ -54,20 +52,10 @@ on:
         type: string
         default: ''
       gpu_va48_enable:
-        description: '实验性 Adreno GPU TTBR0 VA48（仅GPU；需下方匹配SDK；单独输出ko，不随AnyKernel安装）'
+        description: '单独构建实验性 Adreno GPU VA48；开启 CPU VA48 时自动联动；CI 自动取源码，模块需另行部署'
         required: true
         type: boolean
         default: false
-      gpu_va48_sdk_url:
-        description: '仅GPU开启时必填：与本次GKI精确匹配的已准备vendor SDK HTTPS压缩包；见other_patch/gpu_va48/README.md'
-        required: false
-        type: string
-        default: ''
-      gpu_va48_sdk_sha256:
-        description: '仅GPU开启时必填：上述SDK压缩包的64位SHA256；缺失/不匹配直接失败'
-        required: false
-        type: string
-        default: ''
       susfs_enable:
         description: '是否开启susfs(用于增强隐藏环境挂载功能; 可能轻微增加耗电，上游更新导致不稳定时或不需要可关闭)'
         required: true
@@ -154,20 +142,6 @@ jobs:
     steps:
       - name: 检出当前构建仓库
         uses: actions/checkout@v4
-
-      - name: 检查 GPU VA48 SDK 输入
-        if: inputs.gpu_va48_enable
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import os, re
-          from urllib.parse import urlsplit
-          url = urlsplit(os.environ['GPU_VA48_SDK_URL'])
-          if url.scheme != 'https' or not url.hostname or url.username or url.password or url.fragment:
-              raise SystemExit('GPU VA48 requires a public HTTPS vendor SDK URL without credentials or fragment; see other_patch/gpu_va48/README.md')
-          if not re.fullmatch(r'[0-9a-fA-F]{64}', os.environ['GPU_VA48_SDK_SHA256']):
-              raise SystemExit('GPU VA48 requires the matching SDK SHA256 (64 hex digits)')
-          PY
 
       - name: 安装环境依赖+初始化源码仓库及llvm-Clang20工具链
         run: |
@@ -737,17 +711,16 @@ jobs:
           rm -f Image
           mv oImage Image
           
-      - name: 构建独立 Adreno GPU VA48 模块（不修改 CPU Image）
-        if: inputs.gpu_va48_enable
+      - name: 自动准备公开源码并构建 Adreno GPU VA48 模块
+        if: env.FEATURE_GPU_VA48 == 'true'
         run: |
           set -euo pipefail
-          sudo apt-get install -y --no-install-recommends kmod
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bc bison flex libssl-dev libelf-dev kmod dwarves zstd xz-utils
           export PATH="$GITHUB_WORKSPACE/kernel_workspace/clang20/bin:$GITHUB_WORKSPACE/kernel_workspace/build-tools/bin:$PATH"
-          python3 "$GITHUB_WORKSPACE/other_patch/gpu_va48/build_gpu_va48.py" \
+          python3 "$GITHUB_WORKSPACE/other_patch/gpu_va48/build_gpu_va48_ci.py" \
             --common-source "$GITHUB_WORKSPACE/kernel_workspace/common" \
             --common-out "$GITHUB_WORKSPACE/kernel_workspace/common/out" \
-            --sdk-url "$GPU_VA48_SDK_URL" \
-            --sdk-sha256 "$GPU_VA48_SDK_SHA256" \
             --kernel-version "${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}" \
             --output "$GITHUB_WORKSPACE/gpu-va48-output"
 
@@ -804,7 +777,7 @@ jobs:
           echo "Kernel Ver: $FULL_VERSION" >> ./ak3.log
           echo "KSU Branch: ${KSU_TYPENAME}" >> ./ak3.log
           echo "KSU Ver: ${KSUVER}" >> ./ak3.log
-          echo "GPU TTBR0 VA48: $FEATURE_GPU_VA48 (experimental; separate gpu-va48 artifact; AnyKernel installs Image only)" >> ./ak3.log
+          echo "GPU TTBR0 VA48 build: $FEATURE_GPU_VA48 (CPU VA48 automatically enables this; separate gpu-va48 artifact; GPU modules require device-specific deployment)" >> ./ak3.log
           echo "VA48 r16: $FEATURE_VA48" >> ./ak3.log
           echo "故障日志: $FEATURE_BOOT_LOG" >> ./ak3.log
           echo "屏幕配置: $BOOT_LOG_PROFILE" >> ./ak3.log
@@ -838,8 +811,8 @@ jobs:
           if-no-files-found: warn
           archive: true
 
-      - name: 上传 GPU 独立模块与验证记录
-        if: always() && inputs.gpu_va48_enable
+      - name: 上传 GPU 模块、源码锁定信息与构建诊断
+        if: always() && env.FEATURE_GPU_VA48 == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: gpu-va48-6.1.${{ env.SUB_VERSION }}
@@ -911,8 +884,8 @@ jobs:
           - 机型：欧加真骁龙8Gen3通用 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} 内核（基于一加12 ${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }} 版官方OKI源码）
           - KSU分支：${{ env.KSU_TYPENAME }}
           - VA48 r16 用户空间扩展：${{ inputs.va48_enable }}
-          - GPU TTBR0 VA48（实验性）：${{ inputs.gpu_va48_enable }}；与 CPU VA48 独立，GPU 开关不修改 CPU 地址布局。
-          - 开启 GPU 选项需精确匹配的 vendor SDK；GPU 模块、日志与校验记录见本次 Actions 的 gpu-va48 工件。AnyKernel ZIP 仅安装 Image，不安装 GPU 模块；GPU 功能尚未实机验证。
+          - Adreno GPU VA48 构建（实验性）：${{ env.FEATURE_GPU_VA48 }}；CPU VA48 开启时自动联动，也可单独勾选 GPU。
+          - CI 自动下载固定版本公开源码并编译；GPU 构建或 ABI 校验失败会中止打包。GPU 模块见 gpu-va48 工件，需按设备固件部署；AnyKernel ZIP 只安装 Image，仅刷 ZIP 不会启用 GPU VA48。尚未实机验证。
           - 故障日志：${{ inputs.boot_log_enable }}，屏幕配置：${{ inputs.boot_log_profile }}
           - 实机验证范围：基础 r16 仅一加 ACE5 / 6.1.118 已测试正常开机；其他版本、设备及新版日志未实机验证。
           - 屏幕自动模式只读取有效的设备树 simple-framebuffer；无法识别时关闭屏幕输出，不猜测地址。
