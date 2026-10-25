@@ -85,11 +85,13 @@ python3 -m unittest discover -s other_patch/va48/tests -p 'test_*.py'
 
 ## 实验性 Adreno GPU VA48（仅 SM8650）
 
-四个骁龙入口 6.1.57 / 6.1.75 / 6.1.118 / 6.1.141，以及原有 `va48_boot.yml` 增加独立的 `gpu_va48_enable`，默认关闭。GPU 补丁只扩展 KGSL 自有 TTBR0，不修改 CPU 地址空间、内核布局、设备树或原 CPU VA48 补丁。普通 `fastbuild` 入口只开 GPU 时，可保持 `va48_enable=false`；专用 `va48_boot.yml` 原本始终开启 CPU VA48，此行为不变。天玑/Mali 工作流没有改动。
+四个骁龙入口 6.1.57 / 6.1.75 / 6.1.118 / 6.1.141 增加 `gpu_va48_enable`。开启原有 `va48_enable` 时自动联动构建 GPU VA48，不必再勾选 GPU；只勾选 GPU 则保持原 CPU 配置。专用 `va48_boot.yml` 始终开启 CPU VA48，因此也始终构建配套 GPU。GPU 构建失败会中止打包，保存诊断。天玑/Mali 工作流没有改动。
 
-启用时必须同时填写 `gpu_va48_sdk_url`、`gpu_va48_sdk_sha256`，提供与本次 GKI 配置、符号及 CPU 布局头精确匹配的已准备 vendor SDK；最终 Image 在 GPU 构建前后校验不变。仓库没有通用预制 SDK；缺失或不匹配会明确失败。补丁器已检查 U14/V15/B16 三套 GPU 源码基线；6.1.141 没有找到对应官方 GPU 分支，不能假定现有 GPU 模块可直接加载。全部设备/固件尚未实机适配验证。
+CI 自动下载固定 commit 的公开 vendor kernel、KGSL 和依赖源码，准备独立构建目录并编译，无需填写 SDK URL、无需从手机提取镜像。版本、配置、CPU 布局头、符号 CRC 和 vermagic 都进行检查；不能把分支名直接当内核版本。6.1.75 使用同 SoC 的 Ace3Pro 公开源码，早期依赖有固定版本补充来源，均为尚未完成实机适配的实验候选。
 
-GPU 模块、构建日志和校验结果在单独的 `gpu-va48-6.1.*` Actions 工件中。**AnyKernel ZIP 只安装 Image，不会安装 GPU 模块；仅刷 ZIP 不会启用 GPU 功能。** 这仍是实验性源码方案，尚未完成真实 KGSL 模块编译或硬件验证。SDK 格式、应用步骤、地址分区和测试说明见 [GPU VA48 文档](other_patch/gpu_va48/README.md)。
+GPU 补丁只扩展 KGSL 自有 TTBR0，不修改 CPU 内核布局、设备树或原 CPU VA48 补丁。GPU 构建过程中，当前 common 源码的 CPU 布局头与最终 Image 前后校验不变。原有 r16 仍为用户态 VA48、内核布局 VA39。
+
+**联动构建不等于已在设备启用。** GPU 模块、依赖、日志及校验结果保存在 `gpu-va48-6.1.*` Actions 工件；AnyKernel ZIP 只安装 Image，设备仍需部署与固件匹配的 GPU 模块。只刷 ZIP、继续加载原厂 KGSL 不会改变 GPU 地址限制。本方案尚未完成真实 KGSL 构建或实机验证，也不承诺全部 48 位 CPU 指针均能同址共享。参见 [GPU VA48 文档](other_patch/gpu_va48/README.md)。
 
 ## 待实现：
 - [ ] zram内置化，无需外置zram.ko挂载 ~~（有了新版 lz4&zstd 补丁真的还有必要吗）~~
