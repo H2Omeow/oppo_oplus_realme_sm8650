@@ -1,0 +1,55 @@
+test_cpu_source_and_image_are_protected (__main__.PublicSourceBuildTests.test_cpu_source_and_image_are_protected) ... GPU CI: merge-vendor-config
+GPU CI: vendor-olddefconfig
+GPU CI: vendor-modules-prepare
+GPU CI: vendor-native-modules
+GPU CI: synx-modules
+GPU CI: hw-fence-modules
+GPU CI: kgsl-va48-module
+ok
+test_dependency_output_missing_is_not_success (__main__.PublicSourceBuildTests.test_dependency_output_missing_is_not_success) ... GPU CI: merge-vendor-config
+GPU CI: vendor-olddefconfig
+GPU CI: vendor-modules-prepare
+GPU CI: vendor-native-modules
+GPU CI: synx-modules
+GPU CI: hw-fence-modules
+GPU CI: kgsl-va48-module
+ok
+test_dependency_vermagic_mismatch_is_not_success (__main__.PublicSourceBuildTests.test_dependency_vermagic_mismatch_is_not_success) ... GPU CI: merge-vendor-config
+GPU CI: vendor-olddefconfig
+GPU CI: vendor-modules-prepare
+GPU CI: vendor-native-modules
+GPU CI: synx-modules
+GPU CI: hw-fence-modules
+GPU CI: kgsl-va48-module
+ok
+test_full_public_source_pipeline_and_dependency_artifacts (__main__.PublicSourceBuildTests.test_full_public_source_pipeline_and_dependency_artifacts) ... GPU CI: merge-vendor-config
+GPU CI: vendor-olddefconfig
+GPU CI: vendor-modules-prepare
+GPU CI: vendor-native-modules
+GPU CI: synx-modules
+GPU CI: hw-fence-modules
+GPU CI: kgsl-va48-module
+ok
+test_missing_mapping_rejected_before_download (__main__.PublicSourceBuildTests.test_missing_mapping_rejected_before_download) ... ok
+test_real_native_stage_failure_stops_before_gpu_and_preserves_logs (__main__.PublicSourceBuildTests.test_real_native_stage_failure_stops_before_gpu_and_preserves_logs) ... GPU CI: merge-vendor-config
+GPU CI: vendor-olddefconfig
+GPU CI: vendor-modules-prepare
+GPU CI: vendor-native-modules
+GPU CI: vendor-native-modules failed; last 80 log lines (04-vendor-native-modules.log):
+["make", "-C", "C:\\Users\\chen\\AppData\\Local\\Temp\\gpu-va48-public-a_aoe8qd\\sources\\kernel_platform\\msm-kernel", "O=C:\\Users\\chen\\AppData\\Local\\Temp\\gpu-va48-public-a_aoe8qd\\vendor-out", "KBUILD_MIXED_TREE=C:\\Users\\chen\\AppData\\Local\\Temp\\tmpmqe4e6l3\\common-out", "KERNELRELEASE=6.1.118-test", "ARCH=arm64", "LLVM=1", "LOCALVERSION=", "KBUILD_MODPOST_WARN=", "KBUILD_MODPOST_NOFINAL=", "-j2", "modules"]
+ok
+test_vendor_config_drift_stops_before_native_build (__main__.PublicSourceBuildTests.test_vendor_config_drift_stops_before_native_build) ... GPU CI: merge-vendor-config
+GPU CI: vendor-olddefconfig
+GPU CI: vendor-modules-prepare
+ok
+test_vendor_dependency_api_is_bound_before_compilation (__main__.PublicSourceBuildTests.test_vendor_dependency_api_is_bound_before_compilation) ... ok
+test_vendor_generated_header_drift_stops_before_native_build (__main__.PublicSourceBuildTests.test_vendor_generated_header_drift_stops_before_native_build) ... GPU CI: merge-vendor-config
+GPU CI: vendor-olddefconfig
+GPU CI: vendor-modules-prepare
+ok
+test_wrong_vendor_base_cannot_be_hidden_by_kernelrelease (__main__.PublicSourceBuildTests.test_wrong_vendor_base_cannot_be_hidden_by_kernelrelease) ... ok
+
+----------------------------------------------------------------------
+Ran 10 tests in 3.857s
+
+OK

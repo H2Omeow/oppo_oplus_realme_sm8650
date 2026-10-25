@@ -17,7 +17,7 @@ import sys
 import tempfile
 
 
-FILES = ("Kconfig", "Kbuild", "kgsl_iommu.h", "kgsl_iommu.c")
+FILES = ("Kconfig", "Kbuild", "kgsl_iommu.h", "kgsl_iommu.c", "kgsl.c")
 MARKER = "QCOM_KGSL_GPU_VA48"
 SOURCE_BASELINES = {
     "oneplus/sm8650_u_14.0.0_oneplus12": {
@@ -25,18 +25,28 @@ SOURCE_BASELINES = {
         "Kbuild": "7110a09e4d4c1aaa6cb979b93e35108c47bc85b2b764c5565438b794d32be6c0",
         "kgsl_iommu.h": "ea0092046d65ec41eefa9cfa4e485303e78971e16d28fdb1877ff2495b73bac9",
         "kgsl_iommu.c": "5f2e2f1e6822e1e37727b6e7a6ed14821787e5ea5f1049113a6200c674b0fc0f",
+        "kgsl.c": "943c77e46326e716752ad1bb5c10d3836e47223f4b71de559d10c381983a8eae",
+    },
+    "oneplus/sm8650_u_14.1.0_oneplus_ace3pro": {
+        "Kconfig": "4f5161d66c500cf1be21a9d537c52288a7d358203cd6e8ed8829fbad5a6fa1d3",
+        "Kbuild": "833c628ef9cc17a21dcf3a18a31ff9793893b7fe6378fc625e6abf9e7a766597",
+        "kgsl_iommu.h": "bbd552051b4212832ee3480d9bb6d4e1fb83c8300e314313a9a707de1f1af1d9",
+        "kgsl_iommu.c": "00ff059070bcd315983bb1e391690433f90a1258a47efe61f27f509157149578",
+        "kgsl.c": "95db5d4b82ab8e20b274be5d52f49c8fc7caf3604e574e43254327d2ecf9047e",
     },
     "oneplus/sm8650_v_15.0.0_oneplus12": {
         "Kconfig": "4f5161d66c500cf1be21a9d537c52288a7d358203cd6e8ed8829fbad5a6fa1d3",
         "Kbuild": "ca56d21e6cafe11cc7f17ed2062257dd1d198726da9c5e6d0905177cee4b8a22",
         "kgsl_iommu.h": "bbd552051b4212832ee3480d9bb6d4e1fb83c8300e314313a9a707de1f1af1d9",
         "kgsl_iommu.c": "d4b9adc87334e9ec37611ef82f53015d1601a7f737139221caa9648984bb73a1",
+        "kgsl.c": "97b53cca9b7f851c6dfde7e532874df11dd7ddc8943cb25890eef16b192982ca",
     },
     "oneplus/sm8650_b_16.0.0_oneplus12": {
         "Kconfig": "4f5161d66c500cf1be21a9d537c52288a7d358203cd6e8ed8829fbad5a6fa1d3",
         "Kbuild": "ca56d21e6cafe11cc7f17ed2062257dd1d198726da9c5e6d0905177cee4b8a22",
         "kgsl_iommu.h": "bbd552051b4212832ee3480d9bb6d4e1fb83c8300e314313a9a707de1f1af1d9",
         "kgsl_iommu.c": "158fa146b934d10ddbdfc34e678863b00b2a0afc9f8b56e00c0193c5a07fc033",
+        "kgsl.c": "21f8f7ba8556f4bea965ac4c811843b26c8a59508b912b7a5cdfb9791c9d7da5",
     },
 }
 
@@ -53,7 +63,7 @@ def replace_one(text: str, old: str, new: str, label: str) -> str:
 
 
 def identify_baseline(originals: dict[str, str]) -> str:
-    """Require all four files from one audited tree; reject mixed revisions.
+    """Require all five files from one audited tree; reject mixed revisions.
 
     The baseline identifies only GPU source. A kernel version (including
     6.1.141) is not a substitute for a matching vendor SDK and module ABI.
@@ -68,7 +78,7 @@ def identify_baseline(originals: dict[str, str]) -> str:
 
 
 def build_changes(root: Path) -> tuple[dict[str, str], dict[str, str]]:
-    """Preflight the entire four-file change before any file can be written."""
+    """Preflight the entire five-file change before any file can be written."""
     originals = {}
     for name in FILES:
         path = root / name
@@ -103,7 +113,7 @@ config DEVFREQ_GOV_QCOM_ADRENO_TZ
         "#define KGSL_IOMMU_VA_END64\t\t0x8000000000ULL\n",
         "#define KGSL_IOMMU_VA_END64\t\t0x8000000000ULL\n\n"
         "/* GPU-only experimental TTBR0 ranges; all end addresses are exclusive. */\n"
-        "#define KGSL_IOMMU_SVM_END48\t\t(1ULL << 47)\n"
+        "#define KGSL_IOMMU_SVM_END48\t\t(1ULL << 48)\n"
         "#define KGSL_IOMMU_VA_BASE48\t\t(1ULL << 47)\n"
         "#define KGSL_IOMMU_VA_END48\t\t(1ULL << 48)\n",
         "GPU address constants")
@@ -175,11 +185,24 @@ config DEVFREQ_GOV_QCOM_ADRENO_TZ
     c = replace_one(c,
         '\t\t\t"64-bit SVM and non-SVM ranges should not overlap");\n',
         '\t\t\t"64-bit SVM and non-SVM ranges should not overlap");\n'
-        "\tBUILD_BUG_ON_MSG(KGSL_IOMMU_SVM_END48 > KGSL_IOMMU_VA_BASE48 ||\n"
+        "\tBUILD_BUG_ON_MSG(KGSL_IOMMU_SVM_END48 > KGSL_IOMMU_VA_END48 ||\n"
         "\t\tKGSL_IOMMU_VA_BASE48 >= KGSL_IOMMU_VA_END48 ||\n"
         "\t\tKGSL_IOMMU_SVM_BASE64 >= KGSL_IOMMU_SVM_END48,\n"
-        '\t\t"GPU VA48 ranges must be ordered and disjoint");\n',
+        '\t\t"GPU VA48 ranges must stay inside TTBR0");\n',
         "VA48 compile-time range check")
+    c = replace_one(c,
+        "\t/*\n\t * We expect the 64-bit SVM and non-SVM ranges not to overlap so that\n"
+        "\t * va_hint points to VA space at the top of the 64-bit non-SVM range.\n\t */\n",
+        "\t/*\n\t * Legacy ranges stay disjoint for the va_hint fast path. GPU VA48\n"
+        "\t * intentionally shares the upper range and uses the locked rbtree\n"
+        "\t * gap search instead, so SVM and non-SVM reservations cannot overlap.\n\t */\n",
+        "shared VA48 reservation invariant")
+    c = replace_one(c,
+        "\tif (!pagetable->va_hint || !upper_32_bits(top))\n",
+        "\t/* GPU VA48 SVM may occupy this range; never bypass the rbtree. */\n"
+        "\tif (to_kgsl_iommu(pagetable)->gpu_va48 ||\n"
+        "\t\t!pagetable->va_hint || !upper_32_bits(top))\n",
+        "disable unsafe hint only for GPU VA48")
     c = replace_one(c,
         "int kgsl_iommu_bind(struct kgsl_device *device, struct platform_device *pdev)\n",
         """/* No CPU VA or TTBR1 changes: this only gates the KGSL TTBR0 experiment. */
@@ -254,6 +277,12 @@ int kgsl_iommu_bind(struct kgsl_device *device, struct platform_device *pdev)
         "\tkgsl_iommu_probe_gpu_va48(device);\n\n"
         "\t/* Probe the default pagetable */\n", "probe before first pagetable")
     changed["kgsl_iommu.c"] = c
+    changed["kgsl.c"] = replace_one(changed["kgsl.c"],
+        "\tu64 va_size = KGSL_IOMMU_VA_END64 - KGSL_IOMMU_VA_BASE64;\n",
+        "\tu64 va_size = KGSL_IOMMU_VA_END64 - KGSL_IOMMU_VA_BASE64;\n\n"
+        "\tif (dev_priv->device->mmu.iommu.gpu_va48)\n"
+        "\t\tva_size = KGSL_IOMMU_VA_END48 - KGSL_IOMMU_VA_BASE48;\n",
+        "report enabled GPU VA48 non-SVM capacity")
     identify_baseline(originals)
     return originals, changed
 

@@ -38,7 +38,7 @@
  #define KGSL_IOMMU_VA_END64		0x8000000000ULL
 +
 +/* GPU-only experimental TTBR0 ranges; all end addresses are exclusive. */
-+#define KGSL_IOMMU_SVM_END48		(1ULL << 47)
++#define KGSL_IOMMU_SVM_END48		(1ULL << 48)
 +#define KGSL_IOMMU_VA_BASE48		(1ULL << 47)
 +#define KGSL_IOMMU_VA_END48		(1ULL << 48)
  
@@ -148,18 +148,38 @@
  		}
  
  	} else {
-@@ -1538,6 +1568,10 @@
+@@ -1532,12 +1562,17 @@
+ 	}
+ 
+ 	/*
+-	 * We expect the 64-bit SVM and non-SVM ranges not to overlap so that
+-	 * va_hint points to VA space at the top of the 64-bit non-SVM range.
++	 * Legacy ranges stay disjoint for the va_hint fast path. GPU VA48
++	 * intentionally shares the upper range and uses the locked rbtree
++	 * gap search instead, so SVM and non-SVM reservations cannot overlap.
+ 	 */
  	BUILD_BUG_ON_MSG(!((KGSL_IOMMU_VA_BASE64 >= KGSL_IOMMU_SVM_END64) ||
  			(KGSL_IOMMU_SVM_BASE64 >= KGSL_IOMMU_VA_END64)),
  			"64-bit SVM and non-SVM ranges should not overlap");
-+	BUILD_BUG_ON_MSG(KGSL_IOMMU_SVM_END48 > KGSL_IOMMU_VA_BASE48 ||
++	BUILD_BUG_ON_MSG(KGSL_IOMMU_SVM_END48 > KGSL_IOMMU_VA_END48 ||
 +		KGSL_IOMMU_VA_BASE48 >= KGSL_IOMMU_VA_END48 ||
 +		KGSL_IOMMU_SVM_BASE64 >= KGSL_IOMMU_SVM_END48,
-+		"GPU VA48 ranges must be ordered and disjoint");
++		"GPU VA48 ranges must stay inside TTBR0");
  
  	/* Set up the hint for 64-bit non-SVM VA on per-process pagetables */
  	pt->base.va_hint = pt->base.va_start;
-@@ -2588,6 +2622,70 @@
+@@ -2001,7 +2036,9 @@
+ 	 * that are common to all processes, or if we're constrained to a 32-bit
+ 	 * range. Don't use the va_hint in these cases.
+ 	 */
+-	if (!pagetable->va_hint || !upper_32_bits(top))
++	/* GPU VA48 SVM may occupy this range; never bypass the rbtree. */
++	if (to_kgsl_iommu(pagetable)->gpu_va48 ||
++		!pagetable->va_hint || !upper_32_bits(top))
+ 		return (u64) -EINVAL;
+ 
+ 	/* Satisfy requested alignment */
+@@ -2588,6 +2625,70 @@
  	of_node_put(node);
  }
  
@@ -230,7 +250,7 @@
  int kgsl_iommu_bind(struct kgsl_device *device, struct platform_device *pdev)
  {
  	u32 val[2];
-@@ -2652,6 +2750,7 @@
+@@ -2652,6 +2753,7 @@
  
  	/* Peek at the phandle to set up configuration */
  	kgsl_iommu_check_config(mmu, node);
@@ -238,3 +258,15 @@
  
  	/* Probe the default pagetable */
  	ret = iommu_probe_user_context(device, node);
+--- a/graphics-kernel/kgsl.c
++++ b/graphics-kernel/kgsl.c
+@@ -1971,6 +1971,9 @@
+ {
+ 	u64 va_size = KGSL_IOMMU_VA_END64 - KGSL_IOMMU_VA_BASE64;
+ 
++	if (dev_priv->device->mmu.iommu.gpu_va48)
++		va_size = KGSL_IOMMU_VA_END48 - KGSL_IOMMU_VA_BASE48;
++
+ 	if (param->sizebytes != sizeof(va_size))
+ 		return -EINVAL;
+ 

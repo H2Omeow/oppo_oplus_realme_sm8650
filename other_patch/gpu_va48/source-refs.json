@@ -1,0 +1,135 @@
+{
+  "6.1.57": {
+    "kernel": {
+      "repository": "OnePlusOSS/android_kernel_oneplus_sm8650",
+      "commit": "8c63b58fa7c25ecbf9356f589c134f9649edf6ef"
+    },
+    "modules": {
+      "repository": "OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650",
+      "commit": "908af6b00b18781697b41e3c31db65eb60f4d006"
+    },
+    "vendor_base_version": "6.1.57",
+    "source_baseline": "oneplus/sm8650_u_14.0.0_oneplus12",
+    "source_branch": "oneplus/sm8650_u_14.0.0_oneplus12",
+    "audited_common_source": {
+      "repository": "cctv18/android_kernel_common_oneplus_sm8650",
+      "commit": "9122bcb797bced6334d2f91177734a7b17de55c7",
+      "branch": "oneplus/sm8650_u_14.0.0_oneplus12"
+    },
+    "validation": "experimental-unverified",
+    "api_header_sha256": {
+      "include/linux/soc/qcom/msm_hw_fence.h": "b23da72718c276bc45b991be3acea4f22c62abc9caf393d077d5bdd5b56f8cce"
+    },
+    "source_note": "Pinned public source candidate. Source Makefile base version was verified; this is not proof of firmware/device ABI compatibility. CI must compile against the current common output and verify CPU configuration, symbol CRC, CFI and module vermagic without bypasses.",
+    "overlays": [
+      {
+        "repository": "OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650",
+        "commit": "c951f93ec63fbee49d468ee2f9d93ac0e807da67",
+        "paths": [
+          "vendor/qcom/opensource/mm-drivers",
+          "vendor/qcom/opensource/synx-kernel"
+        ],
+        "source_note": "Experimental B16 public dependency source only; the matched original GPU source is not replaced. Copy only absent paths; never overwrite an existing driver. Matching msm_hw_fence public API header SHA256 is evidence for attempting a build, not an ABI guarantee. Require a real successful build and strict symbol/CFI checks.",
+        "api_compatibility_evidence": {
+          "target_vendor_header": "include/linux/soc/qcom/msm_hw_fence.h",
+          "target_vendor_header_sha256": "b23da72718c276bc45b991be3acea4f22c62abc9caf393d077d5bdd5b56f8cce",
+          "overlay_reference_kernel": {
+            "repository": "OnePlusOSS/android_kernel_oneplus_sm8650",
+            "commit": "b2696d4a2bda11cb74de35f839ef0cf6ccc1b9cb"
+          },
+          "overlay_reference_header": "include/linux/soc/qcom/msm_hw_fence.h",
+          "overlay_reference_header_sha256": "b23da72718c276bc45b991be3acea4f22c62abc9caf393d077d5bdd5b56f8cce"
+        }
+      }
+    ]
+  },
+  "6.1.75": {
+    "kernel": {
+      "repository": "OnePlusOSS/android_kernel_oneplus_sm8650",
+      "commit": "1087afb8c8942cc1abbad4522e7bf73c32897f18"
+    },
+    "modules": {
+      "repository": "OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650",
+      "commit": "9118850d9e378d4da09f44a0164afbc4b3d06f48"
+    },
+    "vendor_base_version": "6.1.75",
+    "source_baseline": "oneplus/sm8650_u_14.1.0_oneplus_ace3pro",
+    "source_branch": "oneplus/sm8650_u_14.1.0_oneplus_ace3pro",
+    "audited_common_source": {
+      "repository": "cctv18/android_kernel_common_oneplus_sm8650",
+      "commit": "78bbfcf77a69248a356528fe3716d1e394cc7e3c",
+      "branch": "oneplus/sm8650_v_15.0.0_oneplus12"
+    },
+    "validation": "experimental-unverified",
+    "api_header_sha256": {
+      "include/linux/soc/qcom/msm_hw_fence.h": "b23da72718c276bc45b991be3acea4f22c62abc9caf393d077d5bdd5b56f8cce"
+    },
+    "source_note": "Pinned public source candidate. Source Makefile base version was verified; this is not proof of firmware/device ABI compatibility. CI must compile against the current common output and verify CPU configuration, symbol CRC, CFI and module vermagic without bypasses. Uses the public Ace3Pro SM8650 U14.1 kernel/modules pair with an actual 6.1.75 Makefile; the current OnePlus12 V15 vendor branch is 6.1.118 and its initial release was 6.1.68. This is a same-SoC build candidate, not a claim that all SM8650 devices share a vendor ABI.",
+    "overlays": [
+      {
+        "repository": "OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650",
+        "commit": "c951f93ec63fbee49d468ee2f9d93ac0e807da67",
+        "paths": [
+          "vendor/qcom/opensource/mm-drivers"
+        ],
+        "source_note": "Experimental B16 public dependency source only; the matched original GPU source is not replaced. Copy only absent paths; never overwrite an existing driver. Matching msm_hw_fence public API header SHA256 is evidence for attempting a build, not an ABI guarantee. Require a real successful build and strict symbol/CFI checks.",
+        "api_compatibility_evidence": {
+          "target_vendor_header": "include/linux/soc/qcom/msm_hw_fence.h",
+          "target_vendor_header_sha256": "b23da72718c276bc45b991be3acea4f22c62abc9caf393d077d5bdd5b56f8cce",
+          "overlay_reference_kernel": {
+            "repository": "OnePlusOSS/android_kernel_oneplus_sm8650",
+            "commit": "b2696d4a2bda11cb74de35f839ef0cf6ccc1b9cb"
+          },
+          "overlay_reference_header": "include/linux/soc/qcom/msm_hw_fence.h",
+          "overlay_reference_header_sha256": "b23da72718c276bc45b991be3acea4f22c62abc9caf393d077d5bdd5b56f8cce"
+        }
+      }
+    ]
+  },
+  "6.1.118": {
+    "kernel": {
+      "repository": "OnePlusOSS/android_kernel_oneplus_sm8650",
+      "commit": "98f9773760f4f83ecd74be14e63f6919e4b5115c"
+    },
+    "modules": {
+      "repository": "OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650",
+      "commit": "c951f93ec63fbee49d468ee2f9d93ac0e807da67"
+    },
+    "vendor_base_version": "6.1.118",
+    "source_baseline": "oneplus/sm8650_b_16.0.0_oneplus12",
+    "source_branch": "oneplus/sm8650_b_16.0.0_oneplus12",
+    "audited_common_source": {
+      "repository": "cctv18/android_kernel_common_oneplus_sm8650",
+      "commit": "325c324e0c19da05545bc0f491b5c776866d4dde",
+      "branch": "oneplus/sm8650_b_16.0.0_oneplus12"
+    },
+    "validation": "experimental-unverified",
+    "api_header_sha256": {
+      "include/linux/soc/qcom/msm_hw_fence.h": "b23da72718c276bc45b991be3acea4f22c62abc9caf393d077d5bdd5b56f8cce"
+    },
+    "source_note": "Pinned public source candidate. Source Makefile base version was verified; this is not proof of firmware/device ABI compatibility. CI must compile against the current common output and verify CPU configuration, symbol CRC, CFI and module vermagic without bypasses. The vendor kernel is pinned to the initial B16 6.1.118 source instead of the current B16 branch head, which has advanced to 6.1.141. The GPU/modules pin is the audited B16 baseline and may be newer than this vendor kernel; compile/ABI checks remain mandatory."
+  },
+  "6.1.141": {
+    "kernel": {
+      "repository": "OnePlusOSS/android_kernel_oneplus_sm8650",
+      "commit": "b2696d4a2bda11cb74de35f839ef0cf6ccc1b9cb"
+    },
+    "modules": {
+      "repository": "OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650",
+      "commit": "c951f93ec63fbee49d468ee2f9d93ac0e807da67"
+    },
+    "vendor_base_version": "6.1.141",
+    "source_baseline": "oneplus/sm8650_b_16.0.0_oneplus12",
+    "source_branch": "oneplus/sm8650_b_16.0.0_oneplus12",
+    "audited_common_source": {
+      "repository": "cctv18/android_kernel_common_oneplus_sm8650",
+      "commit": "7a244ff186208e81791a0792d5032b63dbad2eda",
+      "branch": "oneplus/sm8650_b_16.0.0_oneplus12_6.1.141"
+    },
+    "validation": "experimental-unverified",
+    "api_header_sha256": {
+      "include/linux/soc/qcom/msm_hw_fence.h": "b23da72718c276bc45b991be3acea4f22c62abc9caf393d077d5bdd5b56f8cce"
+    },
+    "source_note": "Pinned public source candidate. Source Makefile base version was verified; this is not proof of firmware/device ABI compatibility. CI must compile against the current common output and verify CPU configuration, symbol CRC, CFI and module vermagic without bypasses. The official B16 vendor kernel is 6.1.141; there is no separate official _6.1.141 vendor branch. This entry is explicitly uncompiled and untested on hardware, not a verified adaptation."
+  }
+}

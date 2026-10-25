@@ -21,6 +21,6 @@ test_vendor_configuration_drift_after_make_refused (__main__.BuildPipelineTests.
 test_wrong_binding_never_runs_make (__main__.BuildPipelineTests.test_wrong_binding_never_runs_make) ... ok
 
 ----------------------------------------------------------------------
-Ran 21 tests in 7.417s
+Ran 21 tests in 7.651s
 
 OK

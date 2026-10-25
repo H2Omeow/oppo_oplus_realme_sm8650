@@ -1,75 +1,116 @@
 
 Testing audited source: C:\Users\chen\Documents\Codex\2026-10-26\new-chat\work\all_gpu_versions\baselines\u14
 test_apply_success_changes_exact_whitelist_and_refuses_reapply (__main__.GpuOnlyVa48Tests.test_apply_success_changes_exact_whitelist_and_refuses_reapply) ... ok
+test_automatic_source_pins_preserve_audited_gpu_source (__main__.GpuOnlyVa48Tests.test_automatic_source_pins_preserve_audited_gpu_source) ... ok
 test_complete_baseline_identified (__main__.GpuOnlyVa48Tests.test_complete_baseline_identified) ... ok
 test_disabled_and_failed_capability_keep_legacy_ranges (__main__.GpuOnlyVa48Tests.test_disabled_and_failed_capability_keep_legacy_ranges) ... ok
+test_gpu_capacity_property_changes_only_after_capability_probe (__main__.GpuOnlyVa48Tests.test_gpu_capacity_property_changes_only_after_capability_probe) ... ok
 test_missing_last_anchor_refuses_all_writes (__main__.GpuOnlyVa48Tests.test_missing_last_anchor_refuses_all_writes) ... Refused GPU VA48 patch: probe before first pagetable: expected one original anchor, found 0
 ok
 test_mixed_known_baselines_refuse_all_writes (__main__.GpuOnlyVa48Tests.test_mixed_known_baselines_refuse_all_writes) ... ok
 test_power_acquisition_checked_before_read_and_released (__main__.GpuOnlyVa48Tests.test_power_acquisition_checked_before_read_and_released) ... ok
 test_preflight_and_check_never_write_sources (__main__.GpuOnlyVa48Tests.test_preflight_and_check_never_write_sources) ... ok
 test_ranges_boundaries_cpu39_cpu48_and_unchanged_special_ranges (__main__.GpuOnlyVa48Tests.test_ranges_boundaries_cpu39_cpu48_and_unchanged_special_ranges) ... ok
+test_shared_range_reservations_use_actual_c_allocator (__main__.GpuOnlyVa48Tests.test_shared_range_reservations_use_actual_c_allocator) ... ok
 test_ttbr1_cfg_immutable_and_returned_ias_checked (__main__.GpuOnlyVa48Tests.test_ttbr1_cfg_immutable_and_returned_ias_checked) ... ok
 test_unknown_source_fingerprint_refuses_all_writes (__main__.GpuOnlyVa48Tests.test_unknown_source_fingerprint_refuses_all_writes) ... ok
 
 ----------------------------------------------------------------------
-Ran 10 tests in 0.360s
+Ran 13 tests in 0.670s
 
 OK
 GPU-only VA48 preflight passed
 Audited GPU source baseline: oneplus/sm8650_u_14.0.0_oneplus12
 Kconfig: patched sha256=71d8f2e21652905fc1dfd6fffaf58b2f20d60dbdc41b7594f7d547987141949b
 Kbuild: patched sha256=cfb5897a0b521fa071e2e738c3598442cb7fd35a330809baf966c6089296784e
-kgsl_iommu.h: patched sha256=fa6356b7d7a7af97bb66746b7825ec63f02d0fb9081e5f716d6b349a7f2f74e6
-kgsl_iommu.c: patched sha256=c051aa2c2132a7c9ea219fa1bca26e1ff06420e51365721faedd751186f224d6
+kgsl_iommu.h: patched sha256=b75bde446754b4e5d512bce8e26749c63443737818f365d08e7d985f1585b8c1
+kgsl_iommu.c: patched sha256=5753f3192f480961de7e3cd3a63ca59e1f2eb4ef1184112e216afafd1c1233d9
+kgsl.c: patched sha256=3c252b049bf364a444c869296f51321d405777bd8a8fbc70c1a04db6c7b61d01
 CPU/ARM64 sources, device tree and existing CPU VA48 patch are untouched.
 
-Testing audited source: C:\Users\chen\Documents\Codex\2026-10-26\new-chat\work\all_gpu_versions\baselines\v15
+Testing audited source: C:\Users\chen\Documents\Codex\2026-10-26\new-chat\work\all_gpu_versions\baselines\u14_1_ace3pro
 test_apply_success_changes_exact_whitelist_and_refuses_reapply (__main__.GpuOnlyVa48Tests.test_apply_success_changes_exact_whitelist_and_refuses_reapply) ... ok
+test_automatic_source_pins_preserve_audited_gpu_source (__main__.GpuOnlyVa48Tests.test_automatic_source_pins_preserve_audited_gpu_source) ... ok
 test_complete_baseline_identified (__main__.GpuOnlyVa48Tests.test_complete_baseline_identified) ... ok
 test_disabled_and_failed_capability_keep_legacy_ranges (__main__.GpuOnlyVa48Tests.test_disabled_and_failed_capability_keep_legacy_ranges) ... ok
+test_gpu_capacity_property_changes_only_after_capability_probe (__main__.GpuOnlyVa48Tests.test_gpu_capacity_property_changes_only_after_capability_probe) ... ok
 test_missing_last_anchor_refuses_all_writes (__main__.GpuOnlyVa48Tests.test_missing_last_anchor_refuses_all_writes) ... Refused GPU VA48 patch: probe before first pagetable: expected one original anchor, found 0
 ok
 test_mixed_known_baselines_refuse_all_writes (__main__.GpuOnlyVa48Tests.test_mixed_known_baselines_refuse_all_writes) ... ok
 test_power_acquisition_checked_before_read_and_released (__main__.GpuOnlyVa48Tests.test_power_acquisition_checked_before_read_and_released) ... ok
 test_preflight_and_check_never_write_sources (__main__.GpuOnlyVa48Tests.test_preflight_and_check_never_write_sources) ... ok
 test_ranges_boundaries_cpu39_cpu48_and_unchanged_special_ranges (__main__.GpuOnlyVa48Tests.test_ranges_boundaries_cpu39_cpu48_and_unchanged_special_ranges) ... ok
+test_shared_range_reservations_use_actual_c_allocator (__main__.GpuOnlyVa48Tests.test_shared_range_reservations_use_actual_c_allocator) ... ok
 test_ttbr1_cfg_immutable_and_returned_ias_checked (__main__.GpuOnlyVa48Tests.test_ttbr1_cfg_immutable_and_returned_ias_checked) ... ok
 test_unknown_source_fingerprint_refuses_all_writes (__main__.GpuOnlyVa48Tests.test_unknown_source_fingerprint_refuses_all_writes) ... ok
 
 ----------------------------------------------------------------------
-Ran 10 tests in 0.358s
+Ran 13 tests in 0.575s
+
+OK
+GPU-only VA48 preflight passed
+Audited GPU source baseline: oneplus/sm8650_u_14.1.0_oneplus_ace3pro
+Kconfig: patched sha256=538514aca966a30e5b16bf7621ddccf5e5feac23ae82796b7c42ecf362139921
+Kbuild: patched sha256=12e1d37f38bf902db2e1e58ee99c344b74f67819a3b43307e186ea9ba26425ab
+kgsl_iommu.h: patched sha256=a5374966b35215011ea65335bf1da0661a07742a7a01de008871112ce631957e
+kgsl_iommu.c: patched sha256=b36a79fbfd1815163b5b3fd76d36aad7b40586f2b9bb30896fffdae4197f4504
+kgsl.c: patched sha256=d186dbbdc5d72b09fba1f6ba5b00b4e36d590dc4ec5183d57bff1c1ec62dcd96
+CPU/ARM64 sources, device tree and existing CPU VA48 patch are untouched.
+
+Testing audited source: C:\Users\chen\Documents\Codex\2026-10-26\new-chat\work\all_gpu_versions\baselines\v15
+test_apply_success_changes_exact_whitelist_and_refuses_reapply (__main__.GpuOnlyVa48Tests.test_apply_success_changes_exact_whitelist_and_refuses_reapply) ... ok
+test_automatic_source_pins_preserve_audited_gpu_source (__main__.GpuOnlyVa48Tests.test_automatic_source_pins_preserve_audited_gpu_source) ... ok
+test_complete_baseline_identified (__main__.GpuOnlyVa48Tests.test_complete_baseline_identified) ... ok
+test_disabled_and_failed_capability_keep_legacy_ranges (__main__.GpuOnlyVa48Tests.test_disabled_and_failed_capability_keep_legacy_ranges) ... ok
+test_gpu_capacity_property_changes_only_after_capability_probe (__main__.GpuOnlyVa48Tests.test_gpu_capacity_property_changes_only_after_capability_probe) ... ok
+test_missing_last_anchor_refuses_all_writes (__main__.GpuOnlyVa48Tests.test_missing_last_anchor_refuses_all_writes) ... Refused GPU VA48 patch: probe before first pagetable: expected one original anchor, found 0
+ok
+test_mixed_known_baselines_refuse_all_writes (__main__.GpuOnlyVa48Tests.test_mixed_known_baselines_refuse_all_writes) ... ok
+test_power_acquisition_checked_before_read_and_released (__main__.GpuOnlyVa48Tests.test_power_acquisition_checked_before_read_and_released) ... ok
+test_preflight_and_check_never_write_sources (__main__.GpuOnlyVa48Tests.test_preflight_and_check_never_write_sources) ... ok
+test_ranges_boundaries_cpu39_cpu48_and_unchanged_special_ranges (__main__.GpuOnlyVa48Tests.test_ranges_boundaries_cpu39_cpu48_and_unchanged_special_ranges) ... ok
+test_shared_range_reservations_use_actual_c_allocator (__main__.GpuOnlyVa48Tests.test_shared_range_reservations_use_actual_c_allocator) ... ok
+test_ttbr1_cfg_immutable_and_returned_ias_checked (__main__.GpuOnlyVa48Tests.test_ttbr1_cfg_immutable_and_returned_ias_checked) ... ok
+test_unknown_source_fingerprint_refuses_all_writes (__main__.GpuOnlyVa48Tests.test_unknown_source_fingerprint_refuses_all_writes) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.630s
 
 OK
 GPU-only VA48 preflight passed
 Audited GPU source baseline: oneplus/sm8650_v_15.0.0_oneplus12
 Kconfig: patched sha256=538514aca966a30e5b16bf7621ddccf5e5feac23ae82796b7c42ecf362139921
 Kbuild: patched sha256=fd40edfb946c2b64222811ccf58f7fd8cfd123f27637dc46d50dee890056c9d8
-kgsl_iommu.h: patched sha256=c703096e534f651022ad74581ef66fe2e894d292e50bbf60a305fd82efae6b51
-kgsl_iommu.c: patched sha256=62103957523a4fee84af30af98bca7678c7e9e6f8845be0a791d28d4c70bc59b
+kgsl_iommu.h: patched sha256=a5374966b35215011ea65335bf1da0661a07742a7a01de008871112ce631957e
+kgsl_iommu.c: patched sha256=dd1d245c45a1bcdd77deeb8927da01e2531ee708a9311b4f97cfe3adc2e84150
+kgsl.c: patched sha256=f5f350d51e919b4b63d02007abc764cc9051972276d101b7f4dac84a7ccb2a37
 CPU/ARM64 sources, device tree and existing CPU VA48 patch are untouched.
 
 Testing audited source: C:\Users\chen\Documents\Codex\2026-10-26\new-chat\work\all_gpu_versions\baselines\b16
 test_apply_success_changes_exact_whitelist_and_refuses_reapply (__main__.GpuOnlyVa48Tests.test_apply_success_changes_exact_whitelist_and_refuses_reapply) ... ok
+test_automatic_source_pins_preserve_audited_gpu_source (__main__.GpuOnlyVa48Tests.test_automatic_source_pins_preserve_audited_gpu_source) ... ok
 test_complete_baseline_identified (__main__.GpuOnlyVa48Tests.test_complete_baseline_identified) ... ok
 test_disabled_and_failed_capability_keep_legacy_ranges (__main__.GpuOnlyVa48Tests.test_disabled_and_failed_capability_keep_legacy_ranges) ... ok
+test_gpu_capacity_property_changes_only_after_capability_probe (__main__.GpuOnlyVa48Tests.test_gpu_capacity_property_changes_only_after_capability_probe) ... ok
 test_missing_last_anchor_refuses_all_writes (__main__.GpuOnlyVa48Tests.test_missing_last_anchor_refuses_all_writes) ... Refused GPU VA48 patch: probe before first pagetable: expected one original anchor, found 0
 ok
 test_mixed_known_baselines_refuse_all_writes (__main__.GpuOnlyVa48Tests.test_mixed_known_baselines_refuse_all_writes) ... ok
 test_power_acquisition_checked_before_read_and_released (__main__.GpuOnlyVa48Tests.test_power_acquisition_checked_before_read_and_released) ... ok
 test_preflight_and_check_never_write_sources (__main__.GpuOnlyVa48Tests.test_preflight_and_check_never_write_sources) ... ok
 test_ranges_boundaries_cpu39_cpu48_and_unchanged_special_ranges (__main__.GpuOnlyVa48Tests.test_ranges_boundaries_cpu39_cpu48_and_unchanged_special_ranges) ... ok
+test_shared_range_reservations_use_actual_c_allocator (__main__.GpuOnlyVa48Tests.test_shared_range_reservations_use_actual_c_allocator) ... ok
 test_ttbr1_cfg_immutable_and_returned_ias_checked (__main__.GpuOnlyVa48Tests.test_ttbr1_cfg_immutable_and_returned_ias_checked) ... ok
 test_unknown_source_fingerprint_refuses_all_writes (__main__.GpuOnlyVa48Tests.test_unknown_source_fingerprint_refuses_all_writes) ... ok
 
 ----------------------------------------------------------------------
-Ran 10 tests in 0.362s
+Ran 13 tests in 0.630s
 
 OK
 GPU-only VA48 preflight passed
 Audited GPU source baseline: oneplus/sm8650_b_16.0.0_oneplus12
 Kconfig: patched sha256=538514aca966a30e5b16bf7621ddccf5e5feac23ae82796b7c42ecf362139921
 Kbuild: patched sha256=fd40edfb946c2b64222811ccf58f7fd8cfd123f27637dc46d50dee890056c9d8
-kgsl_iommu.h: patched sha256=c703096e534f651022ad74581ef66fe2e894d292e50bbf60a305fd82efae6b51
-kgsl_iommu.c: patched sha256=00ff38f30f39aaaa435809e1830b6446ae8a8f0032a4f93b212a6204cff5279b
+kgsl_iommu.h: patched sha256=a5374966b35215011ea65335bf1da0661a07742a7a01de008871112ce631957e
+kgsl_iommu.c: patched sha256=f0307f56880c42e47021d2408dd9327858d7d32bd2a1facf5ef5c86eac182f86
+kgsl.c: patched sha256=7cc6c1b4b0e7b065cde053c273b779e30a9c3c524557bab0bb3ad5edf1295308
 CPU/ARM64 sources, device tree and existing CPU VA48 patch are untouched.

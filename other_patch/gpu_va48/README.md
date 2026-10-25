@@ -6,7 +6,7 @@
 
 审查的构建器版本为 `H2Omeow/oppo_oplus_realme_sm8650@f631392a5378f7a824dd2dfb024ada81345d2639`。原有 VA48 脚本处理的是 CPU 地址空间，不会修改独立构建的 Qualcomm KGSL 驱动。
 
-GPU 源码来自 `OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650`，目录为 `vendor/qcom/opensource/graphics-kernel`。补丁器识别 U14、V15、B16 三套完整四文件 SHA256 基线（分支名与指纹见 `patch_gpu_va48.py` 的 `SOURCE_BASELINES`），拒绝未知版本、混拼源码及重复应用。原 `kgsl_iommu.h:72-76` 将 SVM 设在 64–256 GiB，将非 SVM 设在 256–512 GiB。`gpu-only-va48.patch` 是 B16 的参考 diff；其他基线使用补丁器。
+GPU 源码来自 `OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650`，目录为 `vendor/qcom/opensource/graphics-kernel`。补丁器识别 U14、Ace3Pro U14.1、V15、B16 四套完整五文件 SHA256 基线（分支名与指纹见 `patch_gpu_va48.py` 的 `SOURCE_BASELINES`），拒绝未知版本、混拼源码及重复应用。原 `kgsl_iommu.h:72-76` 将 SVM 设在 64–256 GiB，将非 SVM 设在 256–512 GiB。`gpu-only-va48.patch` 是 B16 的参考 diff；其他基线使用补丁器。
 
 设备树 `kernel_platform/qcom/proprietary/devicetree/qcom/msm-arm-smmu-pineapple.dtsi:10` 的 `qcom,use-3-lvl-tables` 还会使厂商 SMMU 的初始页表输入宽度收窄到 39 位。KGSL 原本直接继承这个宽度，因此只放大地址常量无效。
 
@@ -14,12 +14,13 @@ GPU 源码来自 `OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm865
 
 ## 修改边界
 
-补丁器仅允许修改 GPU 源码目录内的四个文件：
+补丁器仅允许修改 GPU 源码目录内的五个文件：
 
 - `Kconfig`：新增默认关闭的 `QCOM_KGSL_GPU_VA48`。
 - `Kbuild`：让外置模块构建可以显式传入该开关。
 - `kgsl_iommu.h`：GPU 私有状态和地址常量。
-- `kgsl_iommu.c`：硬件能力检查、GPU 私有 TTBR0 页表宽度及分配范围。
+- `kgsl_iommu.c`：硬件能力检查、GPU 私有 TTBR0 页表宽度、分配范围及高址重叠查找。
+- `kgsl.c`：GPU VA48 生效后返回实际普通 GPU 地址容量，旧模式保留原值。
 
 不修改设备树、通用 SMMU 驱动、CPU 页表、CPU VA_BITS、mmap/ASLR、模块 CRC/vermagic 检查，或原仓库的 CPU VA48 脚本。32 位兼容区、安全区和全局 GPU 映射地址保持原有定义。
 
@@ -31,11 +32,11 @@ GPU 源码来自 `OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm865
 
 | GPU 用途 | 原范围 | 实验路径 |
 |---|---|---|
-| CPU/GPU 同址 SVM | `[64 GiB, 256 GiB)` | `[64 GiB, min(128 TiB, 当前任务 TASK_SIZE))` |
+| CPU/GPU 同址 SVM | `[64 GiB, 256 GiB)` | `[64 GiB, min(256 TiB, 当前任务 TASK_SIZE))` |
 | 独立 GPU VA | `[256 GiB, 512 GiB)` | `[128 TiB, 256 TiB)` |
 | GPU 全局 TTBR1 | 原有高地址映射 | 保持原样 |
 
-CPU 仍是 VA39 时，SVM 搜索不会越过当前 CPU 的 `TASK_SIZE`；独立 GPU 分配器使用高地址区，实际 GPU 命令执行能力须实机验证。CPU 已使用用户 VA48、内核布局保持原位置的补丁时，SVM 可使用更大的下半区。**本分区并不承诺 CPU 全部 48 位地址都能直接作为同址 GPU 指针**，上半区被独立 GPU 分配器使用。
+CPU 仍是 VA39 时，SVM 搜索不会越过当前 CPU 的 `TASK_SIZE`；独立 GPU 分配器使用高地址区，实际 GPU 命令执行能力须实机验证。CPU 已使用用户 VA48、内核布局保持原位置的补丁时，SVM 可在完整 CPU 用户地址上限内查找。SVM 与普通 GPU 地址区间在高半区重叠，GPU VA48 模式禁用旧的 va_hint 直接分配快路径，双方使用同一锁保护的红黑树检查冲突。已有 GPU 映射占用某个地址时，同址导入仍会失败，不能覆盖原对象。
 
 ## 应用与构建
 
@@ -56,66 +57,62 @@ CONFIG_QCOM_KGSL_GPU_VA48=y
 
 **只把此补丁放进 common Image 的构建步骤不会生效。** 本次增加独立的 GPU 模块构建入口；模块必须与目标设备、固件和本次 GKI 匹配。本目录不包含自动刷写脚本或声称可直接刷入的二进制。
 
-## 工作流选项
+## 工作流选项与自动编译
 
-四个 SM8650 普通入口 `fastbuild_6.1.57.yml`、`fastbuild_6.1.75.yml`、`fastbuild_6.1.118.yml`、`fastbuild_6.1.141.yml`，以及已有 `va48_boot.yml` 增加：
+四个 SM8650 普通入口 `fastbuild_6.1.57.yml`、`fastbuild_6.1.75.yml`、`fastbuild_6.1.118.yml`、`fastbuild_6.1.141.yml` 的有效 GPU 开关为：
 
-- `gpu_va48_enable`：默认关闭的 GPU 独立开关。普通入口中它与 `va48_enable` 没有联动；只开 GPU 不会开启 CPU VA48。专用 `va48_boot.yml` 原本始终开启 CPU VA48，此行为没有改变。
-- `gpu_va48_sdk_url`：启用时必填，已准备且匹配当前 GKI/目标固件的 vendor SDK HTTPS 压缩包地址。
-- `gpu_va48_sdk_sha256`：启用时必填，压缩包的 64 位 SHA256。
+```text
+FEATURE_GPU_VA48 = va48_enable || gpu_va48_enable
+```
 
-MT6989/MT6897 的 6.1.115、6.1.128、6.1.134 工作流不作修改，也不接入 Mali。工作流的 `ANDROID_VERSION=android14` 是内核 Android 基线，不能据此选择所有固件的 GPU 源码。
+即开启 CPU VA48 时自动构建配套 GPU VA48；也可在 CPU VA48 关闭时单独勾选 `gpu_va48_enable`。原本始终开启 CPU VA48 的 `va48_boot.yml` 也始终构建 GPU，无需重复选项。GPU 构建或校验失败会阻断后续打包，不会忽略错误继续产出一个缺少配套模块的成功结果。默认不启用 CPU/GPU 实验功能。天玑/Mali 的 6.1.115、6.1.128、6.1.134 工作流原样保留。
 
-| 普通入口 | 已检查的 GPU 源码基线 | 适配状态 |
-|---|---|---|
-| 6.1.57 | U14 | 源码补丁预检通过；需要匹配 SDK |
-| 6.1.75 | V15 | 源码补丁预检通过；需要匹配 SDK |
-| 6.1.118 | B16 | 源码补丁预检通过；需要匹配 SDK |
-| 6.1.141 | 可识别的 U14/V15/B16 源码之一 | 未找到官方 `_6.1.141` GPU 分支；必须另外提供精确匹配 SDK，不能假定 B16 可直接加载 |
+### 无需用户提供 SDK
 
-这表示所有 SM8650 构建入口均提供选项，不表示全部设备/固件已经完成模块编译或实机适配。设备 SDK 的 GPU 四文件不在已知基线内时，补丁器直接拒绝。
+`build_gpu_va48_ci.py` 自动完成源码和依赖准备，工作流只需布尔开关；已移除 `gpu_va48_sdk_url` / `gpu_va48_sdk_sha256` 输入。不需要从设备提取镜像，也没有要求用户寻找一个不存在的官方 SDK。
 
-开启后，在 common `Image` 构建及可选 KPM 修补完成、AnyKernel 打包之前执行 `build_gpu_va48.py`，通过已准备的 vendor kernel 环境混合构建真实 `msm_kgsl.ko`。evidence 记录最终待打包 Image 的前后 SHA256；SDK 的预先匹配使用配置、符号表及布局头，不依赖会因时间戳或 KPM 改变的 Image 摘要。独立工件 `gpu-va48-6.1.*` 保存模块、构建日志及 evidence；失败时保存已有诊断，工作流失败。**AnyKernel ZIP 仍只安装 Image，不会安装 GPU 模块。只刷 ZIP 不会启用此 GPU 功能。** 模块部署需按设备原有方式另行处理。
+源码固定信息见 [`source-refs.json`](source-refs.json)：
 
-### 准备 SDK
+| 入口 | vendor kernel 基版 | GPU/模块来源 | 当前状态 |
+|---|---|---|---|
+| 6.1.57 | OnePlus12 U14，实际 6.1.57 | 配套 U14；缺失的 hw_fence/synx 使用固定 B16 公开依赖源码 | 实验候选 |
+| 6.1.75 | SM8650 Ace3Pro U14.1，实际 6.1.75 | 配套 Ace3Pro；缺失的 hw_fence 使用固定 B16 公开依赖源码 | 同 SoC 候选，不能据此保证所有机型 ABI |
+| 6.1.118 | B16 初始发布，实际 6.1.118 | 已审查 B16 GPU/模块源码 | 实验候选 |
+| 6.1.141 | B16 当前固定提交，实际 6.1.141 | 配套 B16 GPU/模块源码 | 实验候选 |
 
-本仓库没有预制的通用 vendor SDK，helper 不会从零准备 vendor kernel。SDK 必须来自可信、原本可以成功构建目标设备 KGSL 的环境，包含完整 vendor kernel 源码、已配置的独立 vendor out、GPU 源码及 hw_fence/synx 等依赖符号表。归档会执行其中的内核构建脚本；URL 应指向自己核验过的公开归档。支持 ZIP 和 Python tarfile 可读取的 tar（建议 `.tar.gz`）；不允许链接、特殊文件、越界路径或重复路径。
+当前 V15 分支的 vendor kernel 已升至 6.1.118，当前 B16 分支已升至 6.1.141；CI 检查固定提交中的 Makefile，避免按分支名误选基版。依赖补充仅复制缺失目录，不能覆盖原有 GPU。匹配公开 API 头只用于支持尝试构建，不是跨固件 ABI 兼容证明。全部机型/固件并未实机验证。
 
-归档根目录必须直接包含 `gpu-va48-sdk.json`，格式见 [`sdk-manifest.example.json`](sdk-manifest.example.json)：
+自动流程如下：
 
-- `sdk_format_version` 为 `1`；`kernel_version` 与所选入口完全相同。
-- `common_out_sha256` 绑定本次 common out 的 `.config`、`vmlinux.symvers`、`System.map`。应从完全相同源码、选项和工具链的构建取得这些文件；不是任意同版本号内核。占位字符串必须换成真实 SHA256。`Image` 不作预先身份匹配，但必须存在且在 GPU 构建前后逐字不变。
-- `common_source_sha256` 绑定当前 common 的 `arch/arm64/include/asm/{memory.h,page.h,processor.h,pgtable-hwdef.h}` 四个布局头。示例文件打包时应重命名为根目录的 `gpu-va48-sdk.json`。
-- `vendor_kernel`、`vendor_out`、`gpu_source` 为 SDK 内相对路径，禁止指向 SDK 外。
-- vendor out 必须已经有 `.config`、generated 头和非空 `Module.symvers`；所有 `dependency_symvers` 也必须真实存在。
-- vendor 与当前 common 的 CPU 配置、关键 ARM64 地址布局头必须匹配。仅把 vendor `.config` 改成 VA48 不能匹配 r16 的布局常量；不匹配直接失败，helper 不覆盖头文件。
+1. 检查本次 common `.config`、Image、符号表和 CPU 布局头，记录 SHA256。
+2. 下载并核对固定 vendor/modules commit，在私有 vendor 工作副本和独立 `vendor-out` 准备配置。以本次 common 配置为基础合并厂商 fragment，对齐 CPU/CFI/LTO 等关键设置及完整 release。
+3. 仅在临时 vendor 副本中对齐当前 common 的四个 CPU 布局头，供模块使用同一 CPU 布局。绝不将 vendor 头反向复制到 common；不构建第二个 CPU Image。
+4. 原生 `KBUILD_MIXED_TREE=common/out make modules` 生成真实 vendor 符号表，再按顺序编译 synx/ipclite、hw_fence 与打补丁的 KGSL。
+5. 严格检查符号冲突、强未定义导入的 CRC、架构、vermagic、实际编译开关和 Image/CPU 头前后摘要。任何失败均保存已有日志并使工作流失败。
 
-本地调用与工作流相同：
+此过程不修改 CPU VA48 补丁、common 的配置或 Image，不禁用 hw_fence/synx、不跳过 modpost、不伪造 CRC、不修改 vermagic。底层 `build_gpu_va48.py` 中的 manifest/校验函数用于内部构建验证，旧 `sdk-manifest.example.json` 不是普通用户需要准备的下载项。签名强制、私有结构、CFI/KMI、固件和用户态驱动仍可能阻止构建或加载，必须通过实际编译和设备测试确认。
+
+本地 Linux 构建入口与 CI 相同（需匹配 Clang、make、kmod 等工具）：
 
 ```sh
-python3 other_patch/gpu_va48/build_gpu_va48.py \
+python3 other_patch/gpu_va48/build_gpu_va48_ci.py \
   --common-source /path/to/common \
   --common-out /path/to/common/out \
-  --sdk-url https://your-host.example/prepared-sdk.tar.gz \
-  --sdk-sha256 ACTUAL_64_HEX_SHA256 \
   --kernel-version 6.1.118 \
   --output ./gpu-va48-output
 ```
 
-helper 在 SDK 副本内打补丁并重编译 GPU；不把 vendor 头复制进 common，不禁用 hw_fence/synx，不忽略 modpost 错误，不放宽 CRC/vermagic。它检查实际 GPU object 编译定义、AArch64 模块、导入符号与 CRC/vermagic，并保护 common 输出及 CPU 布局头的前后 SHA256。工作流额外安装 `kmod`；本地还需 `make`、匹配 Clang 工具链、`llvm-nm`、`modinfo`、`modprobe`。helper 不自动签名；`CONFIG_MODULE_SIG_FORCE=y` 会在构建前拒绝，需要另行准备受信任签名流程。CFI/KMI、固件和用户态驱动兼容性仍需目标环境与实机确认。
+### 模块部署与联动生效
 
-### 本地回归
+common Image 与可选 KPM 修补完成后、AnyKernel 打包前构建 GPU。独立 `gpu-va48-6.1.*` 工件包含模块、依赖、固定源码信息、日志及验证记录。**AnyKernel ZIP 目前只安装 Image，不会替换设备实际加载的 `msm_kgsl.ko` 或 vendor_dlkm 中的依赖。** 仅勾选、编译或只刷 Image 均不意味着 GPU 地址限制已经改变。
 
-```sh
-python3 test_patch_gpu_va48.py \
-  --source /path/to/u14/graphics-kernel \
-  --source /path/to/v15/graphics-kernel \
-  --source /path/to/b16/graphics-kernel \
-  --cpu-patch /path/to/builder/other_patch/va48/patch_va48.py
-python3 test_build_gpu_va48.py --source /path/to/b16/graphics-kernel
-```
+必须按目标固件的模块位置、加载时机、依赖和签名机制部署新模块；不能在所有设备上盲写同一个分区或路径。内核模块不能靠应用启动后的普通文件覆盖来替换已加载 KGSL。设备布局未输入、模块未验证时，本仓库不提供宣称通刷的自动刷写脚本。
 
-补丁器三基线回归通过 30 项；构建 helper 通过 21 项离线测试，使用临时 SDK 与模拟工具链，检查构建编排和失败处理，不是实际 KGSL C 编译。五个工作流的 YAML、条件、步骤顺序和 CPU 行为保持检查也已通过。记录见 `test-results.txt`、`build-test-results.txt`、`workflow-test-results.txt`、`verification.json`。
+SVM 上限为 `min(256 TiB, TASK_SIZE)`，支持在 CPU 允许范围内尝试高位同址导入。若该地址已被普通 GPU 映射占用，同址导入会返回失败；用户态库也可能有自己的地址校验。编译通过不等于全部应用和固件的 48 位 SVM 路径已实机验证。GPU 硬件探测失败时仍走原 GPU 路径，必须看实际初始化日志确认，不能只看 CI 开关。
+
+### 回归验证
+
+补丁器对 U14、Ace3Pro U14.1、V15、B16 四套真实源码执行回归；构建编排测试使用模拟工具链，验证失败处理与保护边界。Python 测试和 YAML 检查均不代表实际 KGSL C 编译。测试记录和验证范围见 `test-results.txt`、`build-test-results.txt`、`workflow-test-results.txt`、`verification.json`。
 
 ## 验证与限制
 

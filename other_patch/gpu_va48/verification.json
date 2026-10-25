@@ -8,6 +8,7 @@
   "gpu_touched_files": [
     "Kbuild",
     "Kconfig",
+    "kgsl.c",
     "kgsl_iommu.c",
     "kgsl_iommu.h"
   ],
@@ -17,13 +18,31 @@
         "Kconfig": "88a36ffde3ceb0e20dbe0bcc6eefc4b05f7a4e3fc596d586b1e017a9c2727987",
         "Kbuild": "7110a09e4d4c1aaa6cb979b93e35108c47bc85b2b764c5565438b794d32be6c0",
         "kgsl_iommu.h": "ea0092046d65ec41eefa9cfa4e485303e78971e16d28fdb1877ff2495b73bac9",
-        "kgsl_iommu.c": "5f2e2f1e6822e1e37727b6e7a6ed14821787e5ea5f1049113a6200c674b0fc0f"
+        "kgsl_iommu.c": "5f2e2f1e6822e1e37727b6e7a6ed14821787e5ea5f1049113a6200c674b0fc0f",
+        "kgsl.c": "943c77e46326e716752ad1bb5c10d3836e47223f4b71de559d10c381983a8eae"
       },
       "patched_sha256": {
         "Kconfig": "71d8f2e21652905fc1dfd6fffaf58b2f20d60dbdc41b7594f7d547987141949b",
         "Kbuild": "cfb5897a0b521fa071e2e738c3598442cb7fd35a330809baf966c6089296784e",
-        "kgsl_iommu.h": "fa6356b7d7a7af97bb66746b7825ec63f02d0fb9081e5f716d6b349a7f2f74e6",
-        "kgsl_iommu.c": "c051aa2c2132a7c9ea219fa1bca26e1ff06420e51365721faedd751186f224d6"
+        "kgsl_iommu.h": "b75bde446754b4e5d512bce8e26749c63443737818f365d08e7d985f1585b8c1",
+        "kgsl_iommu.c": "5753f3192f480961de7e3cd3a63ca59e1f2eb4ef1184112e216afafd1c1233d9",
+        "kgsl.c": "3c252b049bf364a444c869296f51321d405777bd8a8fbc70c1a04db6c7b61d01"
+      }
+    },
+    "oneplus/sm8650_u_14.1.0_oneplus_ace3pro": {
+      "original_sha256": {
+        "Kconfig": "4f5161d66c500cf1be21a9d537c52288a7d358203cd6e8ed8829fbad5a6fa1d3",
+        "Kbuild": "833c628ef9cc17a21dcf3a18a31ff9793893b7fe6378fc625e6abf9e7a766597",
+        "kgsl_iommu.h": "bbd552051b4212832ee3480d9bb6d4e1fb83c8300e314313a9a707de1f1af1d9",
+        "kgsl_iommu.c": "00ff059070bcd315983bb1e391690433f90a1258a47efe61f27f509157149578",
+        "kgsl.c": "95db5d4b82ab8e20b274be5d52f49c8fc7caf3604e574e43254327d2ecf9047e"
+      },
+      "patched_sha256": {
+        "Kconfig": "538514aca966a30e5b16bf7621ddccf5e5feac23ae82796b7c42ecf362139921",
+        "Kbuild": "12e1d37f38bf902db2e1e58ee99c344b74f67819a3b43307e186ea9ba26425ab",
+        "kgsl_iommu.h": "a5374966b35215011ea65335bf1da0661a07742a7a01de008871112ce631957e",
+        "kgsl_iommu.c": "b36a79fbfd1815163b5b3fd76d36aad7b40586f2b9bb30896fffdae4197f4504",
+        "kgsl.c": "d186dbbdc5d72b09fba1f6ba5b00b4e36d590dc4ec5183d57bff1c1ec62dcd96"
       }
     },
     "oneplus/sm8650_v_15.0.0_oneplus12": {
@@ -31,13 +50,15 @@
         "Kconfig": "4f5161d66c500cf1be21a9d537c52288a7d358203cd6e8ed8829fbad5a6fa1d3",
         "Kbuild": "ca56d21e6cafe11cc7f17ed2062257dd1d198726da9c5e6d0905177cee4b8a22",
         "kgsl_iommu.h": "bbd552051b4212832ee3480d9bb6d4e1fb83c8300e314313a9a707de1f1af1d9",
-        "kgsl_iommu.c": "d4b9adc87334e9ec37611ef82f53015d1601a7f737139221caa9648984bb73a1"
+        "kgsl_iommu.c": "d4b9adc87334e9ec37611ef82f53015d1601a7f737139221caa9648984bb73a1",
+        "kgsl.c": "97b53cca9b7f851c6dfde7e532874df11dd7ddc8943cb25890eef16b192982ca"
       },
       "patched_sha256": {
         "Kconfig": "538514aca966a30e5b16bf7621ddccf5e5feac23ae82796b7c42ecf362139921",
         "Kbuild": "fd40edfb946c2b64222811ccf58f7fd8cfd123f27637dc46d50dee890056c9d8",
-        "kgsl_iommu.h": "c703096e534f651022ad74581ef66fe2e894d292e50bbf60a305fd82efae6b51",
-        "kgsl_iommu.c": "62103957523a4fee84af30af98bca7678c7e9e6f8845be0a791d28d4c70bc59b"
+        "kgsl_iommu.h": "a5374966b35215011ea65335bf1da0661a07742a7a01de008871112ce631957e",
+        "kgsl_iommu.c": "dd1d245c45a1bcdd77deeb8927da01e2531ee708a9311b4f97cfe3adc2e84150",
+        "kgsl.c": "f5f350d51e919b4b63d02007abc764cc9051972276d101b7f4dac84a7ccb2a37"
       }
     },
     "oneplus/sm8650_b_16.0.0_oneplus12": {
@@ -45,13 +66,15 @@
         "Kconfig": "4f5161d66c500cf1be21a9d537c52288a7d358203cd6e8ed8829fbad5a6fa1d3",
         "Kbuild": "ca56d21e6cafe11cc7f17ed2062257dd1d198726da9c5e6d0905177cee4b8a22",
         "kgsl_iommu.h": "bbd552051b4212832ee3480d9bb6d4e1fb83c8300e314313a9a707de1f1af1d9",
-        "kgsl_iommu.c": "158fa146b934d10ddbdfc34e678863b00b2a0afc9f8b56e00c0193c5a07fc033"
+        "kgsl_iommu.c": "158fa146b934d10ddbdfc34e678863b00b2a0afc9f8b56e00c0193c5a07fc033",
+        "kgsl.c": "21f8f7ba8556f4bea965ac4c811843b26c8a59508b912b7a5cdfb9791c9d7da5"
       },
       "patched_sha256": {
         "Kconfig": "538514aca966a30e5b16bf7621ddccf5e5feac23ae82796b7c42ecf362139921",
         "Kbuild": "fd40edfb946c2b64222811ccf58f7fd8cfd123f27637dc46d50dee890056c9d8",
-        "kgsl_iommu.h": "c703096e534f651022ad74581ef66fe2e894d292e50bbf60a305fd82efae6b51",
-        "kgsl_iommu.c": "00ff38f30f39aaaa435809e1830b6446ae8a8f0032a4f93b212a6204cff5279b"
+        "kgsl_iommu.h": "a5374966b35215011ea65335bf1da0661a07742a7a01de008871112ce631957e",
+        "kgsl_iommu.c": "f0307f56880c42e47021d2408dd9327858d7d32bd2a1facf5ef5c86eac182f86",
+        "kgsl.c": "7cc6c1b4b0e7b065cde053c273b779e30a9c3c524557bab0bb3ad5edf1295308"
       }
     }
   },
@@ -59,12 +82,16 @@
   "original_builder_snapshot_unchanged_from_zip": true,
   "tests": {
     "patcher": {
-      "passed": 30,
-      "scope": "three actual source baselines; no C compilation"
+      "passed": 52,
+      "scope": "four actual source baselines; extracted allocator C routines compiled and executed with userspace tree shim; no kernel module C compilation or concurrency validation"
     },
     "build_helper": {
       "passed": 21,
       "scope": "offline mocked build pipeline; no actual KGSL C compilation"
+    },
+    "public_source_ci": {
+      "passed": 10,
+      "scope": "offline mocked public-source pipeline and dependency packaging; no kernel module compilation"
     },
     "workflows": {
       "passed": 5,
@@ -72,11 +99,11 @@
     }
   },
   "workflow_sha256": {
-    "fastbuild_6.1.118.yml": "9138dd0c9387455fbb67d349d5ad26e95a1b905500d6c09d7bab09c490e7b6c6",
-    "fastbuild_6.1.141.yml": "887bc5cb5979303162270f1827a66e0449edf96f0fbae1fe869f9ab76cf891b8",
-    "fastbuild_6.1.57.yml": "7643bbfdcc1ed929f121a346ba276a794a8df4d8cec663ca8b37e94e45981543",
-    "fastbuild_6.1.75.yml": "4eafefc91eae43b495a4301632c606fa04dd9f898317ef07c962ad77683894dd",
-    "va48_boot.yml": "afb89c08b9d67aded23985a41c571d3019c7a7e9b001c7c29222b18bb4cdc855"
+    "fastbuild_6.1.118.yml": "2d95e81a2b924d163b7dfd71e0ffe1522dfc59f9025688b9a65bfcb7a3884ef0",
+    "fastbuild_6.1.141.yml": "589092d4693db330490b086d18482d1ab852af77b0d7c40d3ca4a436c157547f",
+    "fastbuild_6.1.57.yml": "a17d62a7751b08933475306e0bd999ed788b2bcb43471b555fdc81e46c8c32db",
+    "fastbuild_6.1.75.yml": "7fe582470c10fd868e8a91a241743d168daf4e41c4c8772497c054409ba93bf9",
+    "va48_boot.yml": "0cfde6efb6355fae640cfc0c44a30bbf23847413adef509fd43f24aa6906eb8e"
   },
   "unchanged_mtk_workflow_sha256": {
     "fastbuild_6.1.115.yml": "19a45d07ded005d92628485153fb781cc70abde444f37a79780a1d91e0e45ca5",
@@ -87,23 +114,25 @@
   "ttbr1": "inherited original GPU cfg/global base; unchanged",
   "svm": {
     "start": "0x1000000000",
-    "end_exclusive": "min(1ULL << 47, TASK_SIZE)"
+    "end_exclusive": "min(1ULL << 48, TASK_SIZE)",
+    "overlap_with_non_svm": "common locked reservation rbtree; GPU VA48 hint bypass disabled"
   },
   "non_svm": {
     "start": "1ULL << 47",
     "end_exclusive": "1ULL << 48"
   },
   "workflow_inputs": [
-    "gpu_va48_enable",
-    "gpu_va48_sdk_url",
-    "gpu_va48_sdk_sha256"
+    "gpu_va48_enable"
   ],
-  "requires_matching_prepared_vendor_sdk": true,
+  "cpu_va48_automatically_builds_gpu": true,
+  "requires_matching_prepared_vendor_sdk": false,
+  "source_map_sha256": "de18adc4e1ff9587a7b8152e856c47237f91ff527a169b56046e0eea7660d079",
   "anykernel_installs_gpu_module": false,
   "limits": [
-    "No prepared vendor SDK provided by this repository",
-    "No real kernel/module C build or device testing performed",
-    "6.1.141 official GPU branch not found; matching SDK still required",
+    "No real kernel/module C build or device testing completed yet",
+    "6.1.75 uses a same-SoC Ace3Pro source pair; 57/75 dependency overlays remain experimental",
+    "AnyKernel installs Image only; actual GPU module deployment is device/firmware-specific",
+    "SVM import cannot overwrite a preexisting GPU VA reservation",
     "All SM8650 workflow entries offered, not all devices/firmware verified"
   ]
 }
