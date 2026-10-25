@@ -1,0 +1,49 @@
+{
+  "experimental": true,
+  "compiled": false,
+  "hardware_tested": false,
+  "source_repository": "OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650",
+  "source_branch": "oneplus/sm8650_b_16.0.0_oneplus12",
+  "source_directory": "vendor/qcom/opensource/graphics-kernel",
+  "source_identity": "Exact original UTF-8/LF fingerprints enforced by patcher; no mutable branch assumption at apply time.",
+  "touched_files": [
+    "Kbuild",
+    "Kconfig",
+    "kgsl_iommu.c",
+    "kgsl_iommu.h"
+  ],
+  "original_sha256": {
+    "Kbuild": "ca56d21e6cafe11cc7f17ed2062257dd1d198726da9c5e6d0905177cee4b8a22",
+    "Kconfig": "4f5161d66c500cf1be21a9d537c52288a7d358203cd6e8ed8829fbad5a6fa1d3",
+    "kgsl_iommu.c": "158fa146b934d10ddbdfc34e678863b00b2a0afc9f8b56e00c0193c5a07fc033",
+    "kgsl_iommu.h": "bbd552051b4212832ee3480d9bb6d4e1fb83c8300e314313a9a707de1f1af1d9"
+  },
+  "patched_sha256": {
+    "Kbuild": "fd40edfb946c2b64222811ccf58f7fd8cfd123f27637dc46d50dee890056c9d8",
+    "Kconfig": "538514aca966a30e5b16bf7621ddccf5e5feac23ae82796b7c42ecf362139921",
+    "kgsl_iommu.c": "00ff38f30f39aaaa435809e1830b6446ae8a8f0032a4f93b212a6204cff5279b",
+    "kgsl_iommu.h": "c703096e534f651022ad74581ef66fe2e894d292e50bbf60a305fd82efae6b51"
+  },
+  "cpu_va48_script_sha256_unchanged": "e6c39975f227f9fd0000a790e2deeca1f63bef192bdcce979c85ee2a46ce02e9",
+  "builder_all_files_unchanged": true,
+  "original_gpu_all_files_unchanged": true,
+  "tests": {
+    "passed": 8,
+    "type": "Python patcher, scope and source-structure checks; no kernel C compilation"
+  },
+  "ttbr0_ias": 48,
+  "ttbr1": "Inherited original cfg and global base; unchanged",
+  "smmu_id2": {
+    "ubs_required": 5,
+    "page4k_bit_required": 12,
+    "power_gate": "Require valid CX regulator and num_clks > 0; check enable returns before read"
+  },
+  "svm": {
+    "start": "0x1000000000",
+    "end_exclusive": "min(1ULL << 47, TASK_SIZE)"
+  },
+  "non_svm": {
+    "start": "1ULL << 47",
+    "end_exclusive": "1ULL << 48"
+  }
+}

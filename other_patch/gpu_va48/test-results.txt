@@ -1,0 +1,21 @@
+GPU-only VA48 preflight passed
+Kconfig: patched sha256=538514aca966a30e5b16bf7621ddccf5e5feac23ae82796b7c42ecf362139921
+Kbuild: patched sha256=fd40edfb946c2b64222811ccf58f7fd8cfd123f27637dc46d50dee890056c9d8
+kgsl_iommu.h: patched sha256=c703096e534f651022ad74581ef66fe2e894d292e50bbf60a305fd82efae6b51
+kgsl_iommu.c: patched sha256=00ff38f30f39aaaa435809e1830b6446ae8a8f0032a4f93b212a6204cff5279b
+CPU/ARM64 sources, device tree and existing CPU VA48 patch are untouched.
+
+test_apply_success_changes_exact_whitelist_and_refuses_reapply (__main__.GpuOnlyVa48Tests.test_apply_success_changes_exact_whitelist_and_refuses_reapply) ... ok
+test_disabled_and_failed_capability_keep_legacy_ranges (__main__.GpuOnlyVa48Tests.test_disabled_and_failed_capability_keep_legacy_ranges) ... ok
+test_missing_last_anchor_refuses_all_writes (__main__.GpuOnlyVa48Tests.test_missing_last_anchor_refuses_all_writes) ... Refused GPU VA48 patch: probe before first pagetable: expected one original anchor, found 0
+ok
+test_power_acquisition_checked_before_read_and_released (__main__.GpuOnlyVa48Tests.test_power_acquisition_checked_before_read_and_released) ... ok
+test_preflight_and_check_never_write_sources (__main__.GpuOnlyVa48Tests.test_preflight_and_check_never_write_sources) ... ok
+test_ranges_boundaries_cpu39_cpu48_and_unchanged_special_ranges (__main__.GpuOnlyVa48Tests.test_ranges_boundaries_cpu39_cpu48_and_unchanged_special_ranges) ... ok
+test_ttbr1_cfg_immutable_and_returned_ias_checked (__main__.GpuOnlyVa48Tests.test_ttbr1_cfg_immutable_and_returned_ias_checked) ... ok
+test_unknown_source_fingerprint_refuses_all_writes (__main__.GpuOnlyVa48Tests.test_unknown_source_fingerprint_refuses_all_writes) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.559s
+
+OK

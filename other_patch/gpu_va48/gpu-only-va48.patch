@@ -1,0 +1,240 @@
+--- a/graphics-kernel/Kconfig
++++ b/graphics-kernel/Kconfig
+@@ -11,6 +11,17 @@
+ 	  Required to use hardware accelerated OpenGL, compute and Vulkan
+ 	  on QTI targets. This includes power management, memory management,
+ 	  and scheduling for the Adreno GPUs.
++
++config QCOM_KGSL_GPU_VA48
++	bool "Experimental 48-bit GPU virtual addresses on SM8650"
++	depends on ARM64 && 64BIT && QCOM_KGSL
++	default n
++	help
++	  Experimentally extend only non-secure GPU TTBR0 page tables on
++	  Adreno Gen7.2.0 after checking the powered SMMU ID2 register.
++	  CPU virtual addresses, TTBR1/global, secure and compat mappings
++	  keep their existing layout. A matching rebuilt KGSL module and
++	  device testing are required. If unsure, say N.
+ 
+ config DEVFREQ_GOV_QCOM_ADRENO_TZ
+ 	tristate "Qualcomm Technologies, Inc. GPU frequency governor"
+--- a/graphics-kernel/Kbuild
++++ b/graphics-kernel/Kbuild
+@@ -1,6 +1,9 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ 
+ KDIR := $(TOP)/kernel_platform/common
++
++# Also support CONFIG_QCOM_KGSL_GPU_VA48=y for an external module build.
++ccflags-$(CONFIG_QCOM_KGSL_GPU_VA48) += -DCONFIG_QCOM_KGSL_GPU_VA48=1
+ 
+ ifeq ($(KGSL_PATH),)
+ KGSL_PATH=$(src)
+--- a/graphics-kernel/kgsl_iommu.h
++++ b/graphics-kernel/kgsl_iommu.h
+@@ -74,6 +74,11 @@
+ #define KGSL_IOMMU_SVM_END64		0x4000000000ULL
+ #define KGSL_IOMMU_VA_BASE64		0x4000000000ULL
+ #define KGSL_IOMMU_VA_END64		0x8000000000ULL
++
++/* GPU-only experimental TTBR0 ranges; all end addresses are exclusive. */
++#define KGSL_IOMMU_SVM_END48		(1ULL << 47)
++#define KGSL_IOMMU_VA_BASE48		(1ULL << 47)
++#define KGSL_IOMMU_VA_END48		(1ULL << 48)
+ 
+ #define CP_APERTURE_REG			0
+ #define CP_SMMU_APERTURE_ID		0x1B
+@@ -175,6 +180,8 @@
+ 	u32 pagesize;
+ 	/** @cx_gdsc: CX GDSC handle in case the IOMMU needs it */
+ 	struct regulator *cx_gdsc;
++	/** @gpu_va48: GPU TTBR0-only opt-in after powered capability checks */
++	bool gpu_va48;
+ };
+ 
+ /*
+--- a/graphics-kernel/kgsl_iommu.c
++++ b/graphics-kernel/kgsl_iommu.c
+@@ -18,6 +18,7 @@
+ #include <linux/random.h>
+ #include <linux/regulator/consumer.h>
+ #include <soc/qcom/secure_buffer.h>
++#include <asm/processor.h>
+ 
+ #include "adreno.h"
+ #include "kgsl_device.h"
+@@ -32,6 +33,10 @@
+ #define KGSL_IOMMU_IDR1_OFFSET 0x24
+ #define IDR1_NUMPAGENDXB GENMASK(30, 28)
+ #define IDR1_PAGESIZE BIT(31)
++
++#define KGSL_IOMMU_IDR2_OFFSET 0x28
++#define IDR2_UBS GENMASK(11, 8)
++#define IDR2_PTFS_4K BIT(12)
+ 
+ static const struct kgsl_mmu_pt_ops secure_pt_ops;
+ static const struct kgsl_mmu_pt_ops default_pt_ops;
+@@ -1385,6 +1390,7 @@
+ {
+ 	struct adreno_smmu_priv *adreno_smmu = dev_get_drvdata(&ctx->pdev->dev);
+ 	const struct io_pgtable_cfg *cfg = NULL;
++	struct kgsl_iommu *iommu = KGSL_IOMMU(ctx->kgsldev);
+ 	void *domain = (void *)adreno_smmu->cookie;
+ 
+ 	if (adreno_smmu->cookie)
+@@ -1395,11 +1401,28 @@
+ 	pt->info = adreno_smmu->pgtbl_info;
+ 	pt->info.cfg = *cfg;
+ 	pt->info.cfg.quirks &= ~IO_PGTABLE_QUIRK_ARM_TTBR1;
++	/* Change only this copied TTBR0 cfg; the SMMU TTBR1 cfg is untouched. */
++	if (iommu->gpu_va48)
++		pt->info.cfg.ias = 48;
+ 	pt->info.cfg.tlb = &kgsl_iopgtbl_tlb_ops;
+ 	pt->pgtbl_ops = qcom_alloc_io_pgtable_ops(QCOM_ARM_64_LPAE_S1, &pt->info, domain);
+ 
+ 	if (!pt->pgtbl_ops)
+ 		return -ENOMEM;
++
++	if (iommu->gpu_va48 && pt->info.cfg.ias != 48) {
++		dev_err(&ctx->kgsldev->pdev->dev,
++			"GPU VA48: TTBR0 allocator returned IAS=%u; refusing inconsistent ranges\n",
++			pt->info.cfg.ias);
++		qcom_free_io_pgtable_ops(pt->pgtbl_ops);
++		pt->pgtbl_ops = NULL;
++		return -ERANGE;
++	}
++
++	if (iommu->gpu_va48 && pt->base.name == KGSL_MMU_GLOBAL_PT)
++		dev_info(&ctx->kgsldev->pdev->dev,
++			"GPU VA48: TTBR0 IAS=%u, inherited TTBR1 IAS=%u (unchanged)\n",
++			pt->info.cfg.ias, cfg->ias);
+ 
+ 	pt->ttbr0 = pt->info.cfg.arm_lpae_s1_cfg.ttbr;
+ 
+@@ -1425,8 +1448,10 @@
+ 	if (test_bit(KGSL_MMU_64BIT, &mmu->features)) {
+ 		iommu_pt->base.compat_va_start = KGSL_IOMMU_SVM_BASE32(mmu);
+ 		iommu_pt->base.compat_va_end = KGSL_IOMMU_SVM_END32(mmu);
+-		iommu_pt->base.va_start = KGSL_IOMMU_VA_BASE64;
+-		iommu_pt->base.va_end = KGSL_IOMMU_VA_END64;
++		iommu_pt->base.va_start = iommu->gpu_va48 ?
++			KGSL_IOMMU_VA_BASE48 : KGSL_IOMMU_VA_BASE64;
++		iommu_pt->base.va_end = iommu->gpu_va48 ?
++			KGSL_IOMMU_VA_END48 : KGSL_IOMMU_VA_END64;
+ 
+ 	} else {
+ 		iommu_pt->base.va_start = KGSL_IOMMU_SVM_BASE32(mmu);
+@@ -1511,15 +1536,20 @@
+ 	if (test_bit(KGSL_MMU_64BIT, &mmu->features)) {
+ 		pt->base.compat_va_start = KGSL_IOMMU_SVM_BASE32(mmu);
+ 		pt->base.compat_va_end = KGSL_IOMMU_SVM_END32(mmu);
+-		pt->base.va_start = KGSL_IOMMU_VA_BASE64;
+-		pt->base.va_end = KGSL_IOMMU_VA_END64;
++		pt->base.va_start = iommu->gpu_va48 ?
++			KGSL_IOMMU_VA_BASE48 : KGSL_IOMMU_VA_BASE64;
++		pt->base.va_end = iommu->gpu_va48 ?
++			KGSL_IOMMU_VA_END48 : KGSL_IOMMU_VA_END64;
+ 
+ 		if (is_compat_task()) {
+ 			pt->base.svm_start = KGSL_IOMMU_SVM_BASE32(mmu);
+ 			pt->base.svm_end = KGSL_IOMMU_SVM_END32(mmu);
+ 		} else {
+ 			pt->base.svm_start = KGSL_IOMMU_SVM_BASE64;
+-			pt->base.svm_end = KGSL_IOMMU_SVM_END64;
++			/* SVM must fit the existing CPU VA; do not change CPU layout. */
++			pt->base.svm_end = iommu->gpu_va48 ?
++				min_t(u64, KGSL_IOMMU_SVM_END48, TASK_SIZE) :
++				KGSL_IOMMU_SVM_END64;
+ 		}
+ 
+ 	} else {
+@@ -1538,6 +1568,10 @@
+ 	BUILD_BUG_ON_MSG(!((KGSL_IOMMU_VA_BASE64 >= KGSL_IOMMU_SVM_END64) ||
+ 			(KGSL_IOMMU_SVM_BASE64 >= KGSL_IOMMU_VA_END64)),
+ 			"64-bit SVM and non-SVM ranges should not overlap");
++	BUILD_BUG_ON_MSG(KGSL_IOMMU_SVM_END48 > KGSL_IOMMU_VA_BASE48 ||
++		KGSL_IOMMU_VA_BASE48 >= KGSL_IOMMU_VA_END48 ||
++		KGSL_IOMMU_SVM_BASE64 >= KGSL_IOMMU_SVM_END48,
++		"GPU VA48 ranges must be ordered and disjoint");
+ 
+ 	/* Set up the hint for 64-bit non-SVM VA on per-process pagetables */
+ 	pt->base.va_hint = pt->base.va_start;
+@@ -2588,6 +2622,70 @@
+ 	of_node_put(node);
+ }
+ 
++/* No CPU VA or TTBR1 changes: this only gates the KGSL TTBR0 experiment. */
++static void kgsl_iommu_probe_gpu_va48(struct kgsl_device *device)
++{
++	struct kgsl_iommu *iommu = KGSL_IOMMU(device);
++	struct kgsl_mmu *mmu = &device->mmu;
++	u32 id2, ubs;
++	int ret;
++
++	iommu->gpu_va48 = false;
++	if (!IS_ENABLED(CONFIG_QCOM_KGSL_GPU_VA48))
++		return;
++
++	if (PAGE_SIZE != SZ_4K ||
++		!test_bit(KGSL_MMU_64BIT, &mmu->features) ||
++		!test_bit(KGSL_MMU_IOPGTABLE, &mmu->features) ||
++		!adreno_is_gen7_2_0(ADRENO_DEVICE(device))) {
++		dev_warn(&device->pdev->dev,
++			"GPU VA48: requires Gen7.2.0, 4K pages and 64-bit IOPGTABLE; keeping legacy mode\n");
++		return;
++	}
++
++	/* Never read an unpowered SMMU; require explicit usable CX and clocks. */
++	if (!iommu->regbase || iommu->num_clks <= 0 ||
++		IS_ERR_OR_NULL(iommu->cx_gdsc)) {
++		dev_warn(&device->pdev->dev,
++			"GPU VA48: SMMU registers/CX/clocks unavailable; keeping legacy mode\n");
++		return;
++	}
++	ret = regulator_enable(iommu->cx_gdsc);
++	if (ret) {
++		dev_warn(&device->pdev->dev,
++			"GPU VA48: SMMU regulator enable failed: %d; keeping legacy mode\n", ret);
++		return;
++	}
++
++	ret = clk_bulk_prepare_enable(iommu->num_clks, iommu->clks);
++	if (ret) {
++		dev_warn(&device->pdev->dev,
++			"GPU VA48: SMMU clock enable failed: %d; keeping legacy mode\n", ret);
++		goto disable_regulator;
++	}
++
++	id2 = readl_relaxed(iommu->regbase + KGSL_IOMMU_IDR2_OFFSET);
++	clk_bulk_disable_unprepare(iommu->num_clks, iommu->clks);
++	ubs = FIELD_GET(IDR2_UBS, id2);
++	/* Accept only the audited 48-bit UBS encoding; reject all other values. */
++	if (ubs == 5 && (id2 & IDR2_PTFS_4K)) {
++		iommu->gpu_va48 = true;
++		dev_info(&device->pdev->dev,
++			"GPU VA48: powered SMMU ID2=0x%08x supports 48-bit TTBR0 (experimental)\n", id2);
++	} else {
++		dev_warn(&device->pdev->dev,
++			"GPU VA48: SMMU ID2=0x%08x lacks 48-bit/4K support; keeping legacy mode\n", id2);
++	}
++
++disable_regulator:
++	ret = regulator_disable(iommu->cx_gdsc);
++	if (ret) {
++		iommu->gpu_va48 = false;
++		dev_warn(&device->pdev->dev,
++			"GPU VA48: SMMU regulator disable failed: %d; keeping legacy mode\n", ret);
++	}
++}
++
+ int kgsl_iommu_bind(struct kgsl_device *device, struct platform_device *pdev)
+ {
+ 	u32 val[2];
+@@ -2652,6 +2750,7 @@
+ 
+ 	/* Peek at the phandle to set up configuration */
+ 	kgsl_iommu_check_config(mmu, node);
++	kgsl_iommu_probe_gpu_va48(device);
+ 
+ 	/* Probe the default pagetable */
+ 	ret = iommu_probe_user_context(device, node);
