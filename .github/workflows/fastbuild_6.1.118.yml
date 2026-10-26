@@ -612,7 +612,44 @@ jobs:
           echo "编译器信息:"
           echo "Clang版本: $CLANG_VERSION"
           echo "LLD版本: $LLD_VERSION"
-          pahole_version=$(pahole --version 2>/dev/null | head -n1); [ -z "$pahole_version" ] && echo "pahole版本：未安装" || echo "pahole版本：$pahole_version"
+          # BTF 需要 pahole >= 1.31。runner 镜像里的 dwarves 可能退回 v1.25，
+          # 那个版本处理本内核的 .tmp_vmlinux.btf 会报 "Invalid argument"，
+          # 产出损坏的 .btf.vmlinux.bin.o，随后 ld.lld 解析该坏文件时会报出
+          # "unknown file type" 和垃圾未定义符号。此处强制保证版本足够新。
+          pahole_version=$(pahole --version 2>/dev/null | head -n1)
+          pahole_major=$(printf '%s' "$pahole_version" | sed -n 's/^v\?\([0-9]*\)\.\([0-9]*\).*/\1/p')
+          pahole_minor=$(printf '%s' "$pahole_version" | sed -n 's/^v\?\([0-9]*\)\.\([0-9]*\).*/\2/p')
+          pahole_ok=0
+          if [ -n "$pahole_major" ] && [ -n "$pahole_minor" ]; then
+            if [ "$pahole_major" -gt 1 ] || { [ "$pahole_major" -eq 1 ] && [ "$pahole_minor" -ge 31 ]; }; then
+              pahole_ok=1
+            fi
+          fi
+          if [ "$pahole_ok" != 1 ]; then
+            echo "pahole 版本过低或缺失（$pahole_version），BTF 生成会损坏，正在安装新版 dwarves ..."
+            sudo apt-get update -qq || true
+            sudo apt-get install -y --no-install-recommends dwarves >/dev/null 2>&1 || true
+            pahole_version=$(pahole --version 2>/dev/null | head -n1)
+            pahole_major=$(printf '%s' "$pahole_version" | sed -n 's/^v\?\([0-9]*\)\.\([0-9]*\).*/\1/p')
+            pahole_minor=$(printf '%s' "$pahole_version" | sed -n 's/^v\?\([0-9]*\)\.\([0-9]*\).*/\2/p')
+            if [ -n "$pahole_major" ] && [ -n "$pahole_minor" ] && { [ "$pahole_major" -gt 1 ] || { [ "$pahole_major" -eq 1 ] && [ "$pahole_minor" -ge 31 ]; }; }; then
+              pahole_ok=1
+            fi
+          fi
+          if [ "$pahole_ok" != 1 ]; then
+            echo "apt 中无可用的 pahole >= 1.31，正在从源码构建 ..."
+            sudo apt-get install -y --no-install-recommends cmake libdw-dev libelf-dev zlib1g-dev >/dev/null 2>&1 || true
+            rm -rf /tmp/pahole-src
+            if git clone --depth=1 -b v1.31 https://git.kernel.org/pub/scm/devel/pahole/pahole.git /tmp/pahole-src >/dev/null 2>&1 \
+               || git clone --depth=1 -b v1.31 https://github.com/acmel/dwarves.git /tmp/pahole-src >/dev/null 2>&1; then
+              ( cd /tmp/pahole-src && git submodule update --init --recursive >/dev/null 2>&1 || true
+                cmake -D__LIB=lib -DCMAKE_BUILD_TYPE=Release . >/dev/null 2>&1 && make -j"$(nproc)" >/dev/null 2>&1 && sudo make install >/dev/null 2>&1 )
+              sudo ldconfig || true
+              hash -r || true
+              pahole_version=$(pahole --version 2>/dev/null | head -n1)
+            fi
+          fi
+          [ -z "$pahole_version" ] && echo "pahole版本：未安装" || echo "pahole版本：$pahole_version"
           
           export CCACHE_LOGFILE="${{ github.workspace }}/kernel_workspace/ccache.log"
           export CCACHE_COMPILERCHECK="none"
