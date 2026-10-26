@@ -645,8 +645,15 @@ jobs:
               ( cd /tmp/pahole-src && git submodule update --init --recursive || true
                 cmake -D__LIB=lib -DCMAKE_BUILD_TYPE=Release . && make -j"$(nproc)" && sudo make install ) || echo "pahole 源码构建失败（见上方输出）"
               sudo ldconfig || true
+              # build-tools/bin sits ahead of /usr/local/bin on PATH and ships an
+              # old pahole, so the freshly built v1.31 would never be picked up.
+              # Put /usr/local/bin first and replace the stale copies in place.
+              export PATH="/usr/local/bin:$PATH"
+              for stale in "$WORKDIR/kernel_workspace/build-tools/bin/pahole" /usr/bin/pahole; do
+                [ -e "$stale" ] && sudo cp -f /usr/local/bin/pahole "$stale" || true
+              done
               hash -r || true
-              pahole_version=$(pahole --version 2>/dev/null | head -n1)
+              pahole_version=$(/usr/local/bin/pahole --version 2>/dev/null | head -n1)
             else
               echo "pahole 源码仓库克隆失败（见上方输出）"
             fi
