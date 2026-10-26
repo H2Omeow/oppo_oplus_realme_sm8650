@@ -134,20 +134,85 @@ NEW_CLANG_WARNINGS = (
     "-Wno-error=address-of-packed-member",
 )
 
-# pineapple_GKI.config turns on OPlus scheduler modules that have nothing to do
-# with the GPU address space. They call vendor hooks (register_trace_android_vh_*)
-# that the GKI common tree we build against does not declare, so the native
-# modules stage dies before modpost and never writes Module.symvers. Turning the
-# subtree off is what keeps that symbol table reachable; kconfig cascades the
-# "depends on OPLUS_FEATURE_SCHED_ASSIST" options (TASK_SCHED, TASK_LOAD,
-# LOADBALANCE, PIPELINE, SCHED_SPREAD, TICK_GRAN) by itself, and CPU_JANKINFO
-# (sched_info) is listed because it calls sched_assist exports directly.
-# KGSL imports none of these; its only OPlus touchpoint is MM_OSVELTE, which is
-# an independent memory-debug option and stays untouched.
-KGSL_IRRELEVANT_MODULES = (
-    "CONFIG_OPLUS_FEATURE_SCHED_ASSIST",
-    "CONFIG_OPLUS_FEATURE_CPU_JANKINFO",
-)
+# The pinned vendor kernel is older than the common tree it is built against,
+# and a few of its include/trace/hooks headers predate vendor hooks that GKI has
+# since added: sched.h lacks android_vh_sched_move_task and
+# android_vh_reweight_entity. The OPlus scheduler sources in that same vendor
+# tree call register_trace_* for both, so the native modules stage dies with
+# "call to undeclared function" long before modpost, and Module.symvers is never
+# written -- which is the "required public-source build input is absent" the
+# later stages report.
+#
+# Only the declaration is absent. The common tree declares both hooks and
+# exports their tracepoints (EXPORT_TRACEPOINT_SYMBOL_GPL in
+# kernel/sched/vendor_hooks.c), so aligning the header makes the call sites
+# compile and keeps modpost able to resolve them against vmlinux.symvers.
+#
+# Alignment is conditional: it happens only where the current common header is a
+# strict superset, i.e. every hook the vendor header declares is also declared in
+# the common header with a byte-identical signature. A header that fails that
+# test is left exactly as shipped, because replacing it could drop or redefine a
+# hook the vendor modules are compiled against.
+#
+# Disabling the offending subtree instead does not work. WALT (walt_halt,
+# walt_cfs), frame_boost and oplus_overload all reference sched_assist symbols,
+# so switching it off only relocates the failure into those modules.
+VENDOR_HOOK_DIRECTORY = "include/trace/hooks"
+REQUIRED_VENDOR_HOOK_HEADERS = ("sched.h",)
+HOOK_DECLARATION = re.compile(r"^DECLARE_(?:RESTRICTED_)?HOOK\s*\(")
+HOOK_NAME = re.compile(r"^DECLARE_(?:RESTRICTED_)?HOOK\s*\(\s*([A-Za-z_]\w*)")
+
+
+def hook_signatures(text, origin):
+    """Map each vendor hook declared in a hooks header to its exact signature."""
+    signatures = {}
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if not HOOK_DECLARATION.match(line):
+            continue
+        block, depth = [], 0
+        for current in lines[index:]:
+            block.append(current)
+            depth += current.count("(") - current.count(")")
+            if depth <= 0:
+                break
+        if depth > 0:
+            raise strict.BuildError(f"unterminated vendor hook declaration in {origin}")
+        declaration = " ".join(" ".join(block).split())
+        name = HOOK_NAME.match(declaration)
+        if not name:
+            raise strict.BuildError(f"unparsable vendor hook declaration in {origin}")
+        if signatures.setdefault(name[1], declaration) != declaration:
+            raise strict.BuildError(f"{origin} declares conflicting signatures for {name[1]}")
+    return signatures
+
+
+def align_vendor_hook_headers(kernel, common_source, evidence):
+    """Add vendor hooks the current common tree declares and this vendor tree lacks."""
+    directory = strict.relative_path(VENDOR_HOOK_DIRECTORY).parts
+    for name in REQUIRED_VENDOR_HOOK_HEADERS:
+        require_file(kernel.joinpath(*directory, name))
+        require_file(common_source.joinpath(*directory, name))
+    aligned, preserved = {}, {}
+    for target in sorted(kernel.joinpath(*directory).glob("*.h")):
+        origin = common_source.joinpath(*directory, target.name)
+        if not origin.is_file():
+            preserved[target.name] = "absent from the current common source"
+            continue
+        vendor = hook_signatures(target.read_text(encoding="utf-8", errors="strict"), target.name)
+        current = hook_signatures(origin.read_text(encoding="utf-8", errors="strict"), origin.name)
+        divergent = sorted(name for name, signature in vendor.items() if current.get(name) != signature)
+        if divergent:
+            preserved[target.name] = "current common source drops or redefines: " + ", ".join(divergent)
+            continue
+        added = sorted(set(current) - set(vendor))
+        if not added:
+            continue
+        shutil.copyfile(origin, target)
+        aligned[target.name] = added
+    evidence["vendor_hook_headers_aligned_to_current_common"] = aligned
+    evidence["vendor_hook_headers_preserved"] = preserved
+    return aligned
 
 
 def make_args(kernel, vendor_out, common, release, jobs):
@@ -354,6 +419,7 @@ def build(args, *, runner=subprocess.run, fetcher=fetch_source, refs=None):
                 evidence["vendor_cpu_headers_before"][name] = strict.sha256(target)
                 shutil.copyfile(common_source / name, target)
             evidence["vendor_cpu_headers_aligned_to_current_common"] = True
+            align_vendor_hook_headers(kernel, common_source, evidence)
             vendor_out = work / "vendor-out"
             vendor_out.mkdir()
             fragment = require_file(kernel / "arch/arm64/configs/vendor/pineapple_GKI.config")
@@ -364,8 +430,6 @@ def build(args, *, runner=subprocess.run, fetcher=fetch_source, refs=None):
             for key in sorted(critical):
                 value = current_cfg.get(key, "n")
                 lines.append(f"# {key} is not set" if value == "n" else f"{key}={value}")
-            # Last fragment wins in merge_config.sh, so this overrides pineapple_GKI.config.
-            lines += [f"# {key} is not set" for key in KGSL_IRRELEVANT_MODULES]
             extra.write_text("\n".join(lines) + "\n", encoding="utf-8")
             run_stage("merge-vendor-config", ["bash", str(kernel / "scripts/kconfig/merge_config.sh"), "-m", "-r", "-O", str(vendor_out),
                 str(common / ".config"), str(fragment), str(extra)], output, evidence, env, runner)
@@ -385,8 +449,9 @@ def build(args, *, runner=subprocess.run, fetcher=fetch_source, refs=None):
             # make continue past a broken target, but the tree-wide modpost that
             # writes Module.symvers never runs, so a "tolerated" failure only
             # resurfaces later as an absent Module.symvers and hides the compile
-            # error that caused it. Anything that genuinely does not belong to the
-            # GPU build is excluded in the config fragment above instead. -k and
+            # error that caused it. Vendor sources that cannot compile against the
+            # current common tree are repaired at the source (see
+            # align_vendor_hook_headers) rather than configured out. -k and
             # MODPOST_WARN remain so one broken target still reports every other
             # error in a single run rather than one per CI attempt.
             run_stage("vendor-native-modules", base_make + ["-k", "KBUILD_MODPOST_WARN=1", "modules"],

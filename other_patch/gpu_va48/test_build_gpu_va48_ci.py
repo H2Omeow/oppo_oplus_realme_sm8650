@@ -25,6 +25,48 @@ def load(name, path):
 ci = load('public_gpu_ci_tests', HERE / 'build_gpu_va48_ci.py')
 fixtures = load('public_gpu_fixtures', HERE / 'test_build_gpu_va48.py')
 SOURCE = None
+HOOKS = 'include/trace/hooks'
+
+# Minimal stand-ins for the real include/trace/hooks headers. The vendor header
+# is missing the two hooks the pinned OPlus scheduler sources call, exactly like
+# the public tree; the common header declares them with identical signatures.
+VENDOR_SCHED_HOOK = """#ifndef _TRACE_HOOK_SCHED_H
+DECLARE_HOOK(android_vh_scheduler_tick,
+	TP_PROTO(struct rq *rq),
+	TP_ARGS(rq));
+
+DECLARE_RESTRICTED_HOOK(android_rvh_sched_exec,
+	TP_PROTO(bool *cond),
+	TP_ARGS(cond), 1);
+#endif
+"""
+
+COMMON_SCHED_HOOK = """#ifndef _TRACE_HOOK_SCHED_H
+DECLARE_HOOK(android_vh_scheduler_tick,
+	TP_PROTO(struct rq *rq),
+	TP_ARGS(rq));
+
+DECLARE_RESTRICTED_HOOK(android_rvh_sched_exec,
+	TP_PROTO(bool *cond),
+	TP_ARGS(cond), 1);
+
+DECLARE_HOOK(android_vh_sched_move_task,
+	TP_PROTO(struct task_struct *tsk),
+	TP_ARGS(tsk));
+
+DECLARE_HOOK(android_vh_reweight_entity,
+	TP_PROTO(struct sched_entity *se),
+	TP_ARGS(se));
+#endif
+"""
+
+# Identical in both trees: alignment must leave it untouched.
+SHARED_MM_HOOK = """#ifndef _TRACE_HOOK_MM_H
+DECLARE_HOOK(android_vh_alloc_pages_slowpath,
+	TP_PROTO(gfp_t gfp_flags, unsigned int order, unsigned long delta),
+	TP_ARGS(gfp_flags, order, delta));
+#endif
+"""
 
 
 class PublicSourceBuildTests(unittest.TestCase):
@@ -34,6 +76,9 @@ class PublicSourceBuildTests(unittest.TestCase):
         self.fixture.setUp()
         self.addCleanup(self.fixture.doCleanups)
         self.base = self.fixture.base
+        self.hooks_mode = 'superset'
+        for name, text in (('sched.h', COMMON_SCHED_HOOK), ('mm.h', SHARED_MM_HOOK)):
+            fixtures.put(self.fixture.common_source / HOOKS / name, text)
         self.refs = {'6.1.118': {
             'kernel': {'repository': 'OnePlusOSS/android_kernel_oneplus_sm8650', 'commit': 'a' * 40},
             'modules': {'repository': 'OnePlusOSS/android_kernel_modules_and_devicetree_oneplus_sm8650', 'commit': 'b' * 40},
@@ -62,6 +107,21 @@ class PublicSourceBuildTests(unittest.TestCase):
             fixtures.put(target / 'scripts/kconfig/merge_config.sh', '# source merge script\n')
             fixtures.put(target / 'arch/arm64/configs/vendor/pineapple_GKI.config', 'CONFIG_ARM_SMMU=m\n')
             fixtures.put(target / 'include/linux/soc/qcom/msm_hw_fence.h', 'changed API\n' if self.mode == 'api_drift' else 'public API\n')
+            fixtures.put(target / HOOKS / 'sched.h', VENDOR_SCHED_HOOK)
+            fixtures.put(target / HOOKS / 'mm.h', SHARED_MM_HOOK)
+            if self.hooks_mode == 'vendor_only_hook':
+                # Vendor declares a hook the current common tree does not: the
+                # header must be preserved as shipped.
+                fixtures.put(target / HOOKS / 'sched.h', VENDOR_SCHED_HOOK.replace(
+                    '#endif',
+                    'DECLARE_HOOK(android_vh_vendor_private,\n\tTP_PROTO(int v),\n\tTP_ARGS(v));\n#endif'))
+            elif self.hooks_mode == 'signature_drift':
+                # Same hook name, different prototype: preserve, never overwrite.
+                fixtures.put(target / HOOKS / 'sched.h', VENDOR_SCHED_HOOK.replace(
+                    'TP_PROTO(struct rq *rq),\n\tTP_ARGS(rq));',
+                    'TP_PROTO(struct rq *rq, int cpu),\n\tTP_ARGS(rq, cpu));'))
+            elif self.hooks_mode == 'vendor_header_absent':
+                (target / HOOKS / 'sched.h').unlink()
 
     def module(self, path, gpu=False):
         binary = bytearray(64)
@@ -209,6 +269,43 @@ class PublicSourceBuildTests(unittest.TestCase):
             ci.build(args, runner=self.runner, fetcher=self.fetcher, refs=self.refs)
         self.assertFalse((args.output / 'msm_kgsl.ko').exists())
         self.assertFalse((args.output / 'dependencies').exists())
+
+    def test_vendor_hook_headers_are_aligned_to_current_common(self):
+        args = self.args()
+        source_before = fixtures.tree_hashes(self.fixture.common_source)
+        result = ci.build(args, runner=self.runner, fetcher=self.fetcher, refs=self.refs)
+        self.assertEqual(result['status'], 'success')
+        # Only the header that is genuinely behind gets aligned, and only with
+        # the hooks it was missing.
+        self.assertEqual(result['vendor_hook_headers_aligned_to_current_common'],
+                         {'sched.h': ['android_vh_reweight_entity', 'android_vh_sched_move_task']})
+        # An identical header is not rewritten, and nothing is preserved for cause.
+        self.assertEqual(result['vendor_hook_headers_preserved'], {})
+        # Alignment copies common -> vendor; the common tree stays read-only.
+        self.assertEqual(fixtures.tree_hashes(self.fixture.common_source), source_before)
+
+    def test_vendor_only_hook_keeps_the_shipped_header(self):
+        self.hooks_mode = 'vendor_only_hook'
+        args = self.args()
+        result = ci.build(args, runner=self.runner, fetcher=self.fetcher, refs=self.refs)
+        self.assertEqual(result['status'], 'success')
+        self.assertNotIn('sched.h', result['vendor_hook_headers_aligned_to_current_common'])
+        self.assertIn('android_vh_vendor_private', result['vendor_hook_headers_preserved']['sched.h'])
+
+    def test_hook_signature_drift_keeps_the_shipped_header(self):
+        self.hooks_mode = 'signature_drift'
+        args = self.args()
+        result = ci.build(args, runner=self.runner, fetcher=self.fetcher, refs=self.refs)
+        self.assertEqual(result['status'], 'success')
+        self.assertNotIn('sched.h', result['vendor_hook_headers_aligned_to_current_common'])
+        self.assertIn('android_vh_scheduler_tick', result['vendor_hook_headers_preserved']['sched.h'])
+
+    def test_absent_vendor_hook_header_stops_before_native_build(self):
+        self.hooks_mode = 'vendor_header_absent'
+        args = self.args()
+        with self.assertRaisesRegex(ci.strict.BuildError, 'required public-source build input is absent'):
+            ci.build(args, runner=self.runner, fetcher=self.fetcher, refs=self.refs)
+        self.assertFalse(any(v == 'modules' for cmd in self.calls for v in cmd))
 
 
 if __name__ == '__main__':
