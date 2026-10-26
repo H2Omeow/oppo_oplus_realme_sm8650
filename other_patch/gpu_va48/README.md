@@ -1,6 +1,10 @@
 # GPU VA48：仅扩展 KGSL TTBR0（实验性）
 
-此补丁仅针对 SM8650 / Adreno Gen7.2.0 的 GPU 进程地址空间。**不修改 CPU 用户/内核地址空间，不修改 `arch/arm64`，不调用原有 CPU VA48 补丁器，不改变内核虚拟地址布局。** 默认关闭，尚未完成内核模块编译或实机验证。
+此补丁只改 Adreno GPU 进程地址空间。**不修改 CPU 用户/内核地址空间，不修改 `arch/arm64`，不调用原有 CPU VA48 补丁器，不改变内核虚拟地址布局。** 默认关闭。
+
+机型范围由运行时能力决定，不再写死单一型号：开启开关后，补丁依次检查 4 KiB 页、`KGSL_MMU_64BIT`、`KGSL_MMU_IOPGTABLE`、`adreno_support_64bit()` 以及 Gen7/Gen8 家族，最后读取已上电的 SMMU ID2 寄存器确认 48 位 UBS。任一项不满足就保留原 GPU 地址范围。这样 8gen3（Gen7.2.x，含一加12/Ace3Pro 等）可用，同源的其他 Gen7/Gen8 机型只要硬件真的报告 48 位能力也能生效；探测失败的机型不会被强行开启。源码指纹仍限定为已审计的 U14、Ace3Pro U14.1、V15、B16 四套 GPU 源码。
+
+实机验证范围仍然有限：能力探测、编译与 CI 校验通过不等于已在所有机型上实测 GPU 命令路径。
 
 ## 为什么需要独立补丁
 
@@ -104,9 +108,11 @@ python3 other_patch/gpu_va48/build_gpu_va48_ci.py \
 
 ### 模块部署与联动生效
 
-common Image 与可选 KPM 修补完成后、AnyKernel 打包前构建 GPU。独立 `gpu-va48-6.1.*` 工件包含模块、依赖、固定源码信息、日志及验证记录。**AnyKernel ZIP 目前只安装 Image，不会替换设备实际加载的 `msm_kgsl.ko` 或 vendor_dlkm 中的依赖。** 仅勾选、编译或只刷 Image 均不意味着 GPU 地址限制已经改变。
+common Image 与可选 KPM 修补完成后、AnyKernel 打包前构建 GPU。独立 `gpu-va48-6.1.*` 工件包含模块、依赖、固定源码信息、日志及验证记录。
 
-必须按目标固件的模块位置、加载时机、依赖和签名机制部署新模块；不能在所有设备上盲写同一个分区或路径。内核模块不能靠应用启动后的普通文件覆盖来替换已加载 KGSL。设备布局未输入、模块未验证时，本仓库不提供宣称通刷的自动刷写脚本。
+GPU 地址上限在 `msm_kgsl.ko` 里，设备从 vendor_dlkm 加载该模块，因此只替换 Image 永远改不了它。`package_gpu_module.py` 把重编的模块打包成 KernelSU/Magisk 模块（`gpu_va48_kgsl.zip`），随 AnyKernel ZIP 一起携带，由刷入脚本调用 `ksud module install` 自动安装。**走模块 overlay 而不写任何分区，这正是未解锁 BL 的设备也能启用的原因；下次重启由 init 从被覆盖的路径加载新模块后生效。**
+
+安装器不盲写固定路径：它遍历该固件可能的 `msm_kgsl.ko` 位置，并在设备运行内核版本与模块 vermagic 不匹配时直接拒绝安装，同时保留原模块副本以便回退。仍有三件事只能在实机确认：强制模块签名会使新模块被拒绝加载、已加载的 KGSL 不可能在运行时被替换、以及 GPU 探测失败时会静默回退旧地址范围。装完必须用 `dmesg | grep 'GPU VA48'` 看实际初始化日志，不能只看 CI 开关。只装了 Magisk 而没有 ksud 时，需要在 Magisk 里手动安装该 ZIP。
 
 SVM 上限为 `min(256 TiB, TASK_SIZE)`，支持在 CPU 允许范围内尝试高位同址导入。若该地址已被普通 GPU 映射占用，同址导入会返回失败；用户态库也可能有自己的地址校验。编译通过不等于全部应用和固件的 48 位 SVM 路径已实机验证。GPU 硬件探测失败时仍走原 GPU 路径，必须看实际初始化日志确认，不能只看 CI 开关。
 
