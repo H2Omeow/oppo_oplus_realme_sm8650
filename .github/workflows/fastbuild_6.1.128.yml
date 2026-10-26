@@ -528,17 +528,32 @@ jobs:
           if [[ "${{ github.event.inputs.droidspaces_enable }}" != "false" ]]; then
             echo "正在启用 Droidspaces 容器支持..."
             cd kernel_workspace/common
+            set -euo pipefail
+            RAW="https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/droidspaces_patch"
+            # 补丁静默失败会导致配置开着而代码没进去，构建出带假开关的内核，所以这里必须失败即停
+            apply_patch() {
+              local name="$1"
+              echo "== 应用补丁 $name"
+              wget -q "$RAW/$name" -O "$name"
+              if ! patch -p1 -F 3 --dry-run < "$name"; then
+                echo "::error::Droidspaces 补丁 $name 无法应用到当前内核源码，停止构建"
+                exit 1
+              fi
+              patch -p1 -F 3 < "$name"
+            }
             # 应用 Droidspaces 容器必须补丁
-            wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/droidspaces_patch/fix_sysvipc_kabi_6_7_8.patch
-            patch -p1 -F 3 < fix_sysvipc_kabi_6_7_8.patch || true
+            apply_patch fix_sysvipc_kabi_6_7_8.patch
             # 修补 oplus_bsp_midas 行为，避免开机崩溃
-            wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/droidspaces_patch/fix_oplus_bsp_midas.patch
-            patch -p1 -F 3 < fix_oplus_bsp_midas.patch || true
-            # 应用 NTSync 补丁
-            wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/droidspaces_patch/ntsync_base.patch
-            wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/droidspaces_patch/ntsync_compat_${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch
-            patch -p1 -F 3 < ntsync_base.patch || true
-            patch -p1 -F 3 < ntsync_compat_${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch || true
+            apply_patch fix_oplus_bsp_midas.patch
+            # 应用 NTSync 补丁（Wine/Proton 转译 PC 游戏的同步原语，显著降低同步开销）
+            apply_patch ntsync_base.patch
+            apply_patch "ntsync_compat_${{ env.ANDROID_VERSION }}-${{ env.KERNEL_VERSION }}.patch"
+            # 配置只在代码确实进入源码树后才打开
+            for f in drivers/misc/ntsync.c include/uapi/linux/ntsync.h; do
+              [[ -s "$f" ]] || { echo "::error::NTSync 补丁已应用但缺少 $f"; exit 1; }
+            done
+            grep -q 'config NTSYNC' drivers/misc/Kconfig || { echo "::error::drivers/misc/Kconfig 缺少 NTSYNC 选项"; exit 1; }
+            grep -q 'ntsync.o' drivers/misc/Makefile || { echo "::error::drivers/misc/Makefile 未接入 ntsync.o"; exit 1; }
             # 开启 Droidspaces 容器所需内核支持
             echo "CONFIG_PID_NS=y" >> ./arch/arm64/configs/gki_defconfig
             echo "CONFIG_IPC_NS=y" >> ./arch/arm64/configs/gki_defconfig
@@ -565,12 +580,11 @@ jobs:
               # 开启 systemd-coredump 支持
               echo "CONFIG_STATIC_USERMODEHELPER=n" >> ./arch/arm64/configs/gki_defconfig
               # 添加 Lindroid EVDI DRM 驱动
-              wget https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/droidspaces_patch/evdi_drm.patch
-              patch -p1 -F 3 < evdi_drm.patch || true
+              apply_patch evdi_drm.patch
+              [[ -d drivers/gpu/drm/evdi ]] || { echo "::error::EVDI 补丁已应用但缺少 drivers/gpu/drm/evdi"; exit 1; }
               echo "CONFIG_DRM_LINDROID_EVDI=y" >> ./arch/arm64/configs/gki_defconfig
             fi
           fi
-
       - name: 启用三星SSG IO调度器
         if: inputs.ssg_enable
         run: |
