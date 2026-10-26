@@ -645,13 +645,6 @@ jobs:
           echo 'export LD_PRELOAD="'$PRELOAD_LIBS'"' >> ld-wrapper
           echo 'export FAKESTAT="'$FAKESTAT'"' >> ld-wrapper
           echo 'export FAKETIME="'$FAKETIME'"' >> ld-wrapper
-          # BTF/pahole reads object files through stat()/open(); libfakestat.so
-          # hijacks exactly those calls, which can hand ld.lld a corrupt
-          # .btf.vmlinux.bin.o (seen as "unknown file type" plus a garbage
-          # undefined symbol). Keep the time spoof off the BTF link only.
-          echo 'for a in "$@"; do' >> ld-wrapper
-          echo '  case "$a" in *.btf|*btf.vmlinux*) unset LD_PRELOAD;; esac' >> ld-wrapper
-          echo 'done' >> ld-wrapper
           echo 'ld.lld "$@"' >> ld-wrapper
           
           # 测试时间劫持测试是否正常工作
