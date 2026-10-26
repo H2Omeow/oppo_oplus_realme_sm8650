@@ -336,6 +336,30 @@ jobs:
           else
             echo "已选择无内置KernelSU模式，跳过susfs配置..."
           fi
+          # susfs4oki 的 50_add_susfs_in_gki 补丁会在 CONFIG_KSU_SUSFS 下向
+          # security/selinux/{hooks.c,selinuxfs.c} 注入 extern struct selinux_state fake_state;
+          # 而它的定义只在 KernelSU/10_enable_susfs_for_ksu.patch 里（仅 ksu_type=ksu 应用）。
+          # BakaSU / SukiSU / KernelSU-Next 自带 selinux_hide.c（有 ksu_selinux_hide_running
+          # 但没有 fake_state），于是链接 vmlinux 时报 undefined symbol: fake_state。
+          # 这里为这些分支补上缺失的定义。
+          if [[ ${{ github.event.inputs.ksu_type }} == "bakasu" || ${{ github.event.inputs.ksu_type }} == "sukisu" || ${{ github.event.inputs.ksu_type }} == "ksunext" ]]; then
+            KSU_SRC_DIR=""
+            for cand in ./KernelSU ./KernelSU-Next; do
+              [ -d "$cand" ] && KSU_SRC_DIR="$cand"
+            done
+            if [ -n "$KSU_SRC_DIR" ] && [ -f "$KSU_SRC_DIR/kernel/selinux/selinux.c" ]; then
+              echo "正在为 $KSU_SRC_DIR 补上 susfs 所需的 fake_state 定义..."
+              wget -q https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/70_fake_state_for_susfs.patch -O "$KSU_SRC_DIR/70_fake_state_for_susfs.patch"
+              ( cd "$KSU_SRC_DIR" && patch -p1 -N -F 3 < 70_fake_state_for_susfs.patch || true )
+              if grep -q "struct selinux_state fake_state;" "$KSU_SRC_DIR/kernel/selinux/selinux.c"; then
+                echo "fake_state 定义已补上。"
+              else
+                echo "::warning::未能补上 fake_state 定义，若链接报 undefined symbol: fake_state 请检查此处"
+              fi
+            else
+              echo "::warning::未找到 KSU 源码目录或 kernel/selinux/selinux.c，跳过 fake_state 补丁"
+            fi
+          fi
           if [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
             echo "正在为原版 KernelSU (tiann/KernelSU)添加补丁..."
             cp ./susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
