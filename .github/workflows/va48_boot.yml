@@ -771,6 +771,15 @@ jobs:
             --kernel-version "${{ env.KERNEL_VERSION }}.${{ env.SUB_VERSION }}" \
             --output "$GITHUB_WORKSPACE/gpu-va48-output"
 
+      - name: 打包 GPU VA48 为 KernelSU 模块（随 AnyKernel3 自动安装）
+        if: env.FEATURE_GPU_VA48 == 'true'
+        run: |
+          set -euo pipefail
+          python3 "$GITHUB_WORKSPACE/other_patch/gpu_va48/package_gpu_module.py" \
+            --module "$GITHUB_WORKSPACE/gpu-va48-output/msm_kgsl.ko" \
+            --output "$GITHUB_WORKSPACE/gpu-va48-output/gpu_va48_kgsl.zip" \
+            --version-code "$GITHUB_RUN_NUMBER"
+
       - name: 克隆 AnyKernel3 并打包
         id: create_zip
         run: |
@@ -779,6 +788,31 @@ jobs:
           rm -rf ./AnyKernel3/.git
           cd AnyKernel3
           cp ../common/out/arch/arm64/boot/Image ./Image
+          # GPU VA48：AnyKernel3 本体只装 Image，GPU 地址上限在 msm_kgsl.ko 里，
+          # 所以这里追加一段安装逻辑，用 KSU/Magisk 模块覆盖该模块文件（不写分区，
+          # 未解锁 BL 也可用）。找不到 ksud 或模块时静默跳过，不影响刷内核本身。
+          if [[ -f "$GITHUB_WORKSPACE/gpu-va48-output/gpu_va48_kgsl.zip" ]]; then
+            cp "$GITHUB_WORKSPACE/gpu-va48-output/gpu_va48_kgsl.zip" ./gpu_va48_kgsl.zip
+            {
+              echo ""
+              echo "# --- GPU VA48 KGSL module (appended by CI) ---"
+              echo "if [ -f \"\$AKHOME/gpu_va48_kgsl.zip\" ]; then"
+              echo "    if [ -f /data/adb/ksud ]; then"
+              echo "        ui_print \"Installing GPU VA48 KGSL module...\""
+              echo "        if /data/adb/ksud module install \"\$AKHOME/gpu_va48_kgsl.zip\"; then"
+              echo "            ui_print \"GPU VA48: module queued; reboot to load.\""
+              echo "        else"
+              echo "            ui_print \"GPU VA48: install failed; GPU keeps legacy range.\""
+              echo "        fi"
+              echo "    elif [ -d /data/adb/magisk ]; then"
+              echo "        ui_print \"GPU VA48: install gpu_va48_kgsl.zip manually in Magisk.\""
+              echo "    else"
+              echo "        ui_print \"GPU VA48: no KSU/Magisk found; skipping GPU module.\""
+              echo "    fi"
+              echo "    ui_print \"GPU VA48: after reboot check dmesg | grep GPU VA48\""
+              echo "fi"
+            } >> ./anykernel.sh
+          fi
           if [[ ! -f ./Image ]]; then
             echo "未找到内核镜像文件，构建可能出错"
             exit 1

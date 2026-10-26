@@ -217,12 +217,20 @@ static void kgsl_iommu_probe_gpu_va48(struct kgsl_device *device)
 	if (!IS_ENABLED(CONFIG_QCOM_KGSL_GPU_VA48))
 		return;
 
+	/*
+	 * Gate on capabilities instead of a single GPU model so every Gen7/Gen8
+	 * target that really reports 64-bit per-process page tables can opt in.
+	 * adreno_support_64bit() is the same check that makes KGSL request a
+	 * 48-bit SMMU input size, so this cannot widen beyond vendor intent.
+	 */
 	if (PAGE_SIZE != SZ_4K ||
 		!test_bit(KGSL_MMU_64BIT, &mmu->features) ||
 		!test_bit(KGSL_MMU_IOPGTABLE, &mmu->features) ||
-		!adreno_is_gen7_2_0(ADRENO_DEVICE(device))) {
+		!adreno_support_64bit(ADRENO_DEVICE(device)) ||
+		!(adreno_is_gen7(ADRENO_DEVICE(device)) ||
+			adreno_is_gen8(ADRENO_DEVICE(device)))) {
 		dev_warn(&device->pdev->dev,
-			"GPU VA48: requires Gen7.2.0, 4K pages and 64-bit IOPGTABLE; keeping legacy mode\\n");
+			"GPU VA48: requires a 64-bit Gen7/Gen8 GPU, 4K pages and per-process IOPGTABLE; keeping legacy mode\\n");
 		return;
 	}
 
