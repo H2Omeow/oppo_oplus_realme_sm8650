@@ -345,25 +345,40 @@ jobs:
           # susfs4oki 的 50_add_susfs_in_gki 补丁会在 CONFIG_KSU_SUSFS 下向
           # security/selinux/{hooks.c,selinuxfs.c} 注入 extern struct selinux_state fake_state;
           # 而它的定义只在 KernelSU/10_enable_susfs_for_ksu.patch 里（仅 ksu_type=ksu 应用）。
-          # BakaSU / SukiSU / KernelSU-Next 自带 selinux_hide.c（有 ksu_selinux_hide_running
-          # 但没有 fake_state），于是链接 vmlinux 时报 undefined symbol: fake_state。
-          # 这里为这些分支补上缺失的定义。
+          # BakaSU / SukiSU / KernelSU-Next 自带 kernel/feature/selinux_hide.c（有
+          # ksu_selinux_hide_running 但没有 fake_state），于是链接 vmlinux 时报
+          # undefined symbol: fake_state。这里为这些分支补上缺失的定义。
+          # selinux_hide.c 已 include <security.h>（struct selinux_state 的定义处），
+          # 直接追加即可，不用 patch，避免锚点/格式问题。
           if [[ ${{ github.event.inputs.ksu_type }} == "bakasu" || ${{ github.event.inputs.ksu_type }} == "sukisu" || ${{ github.event.inputs.ksu_type }} == "ksunext" ]]; then
             KSU_SRC_DIR=""
             for cand in ./KernelSU ./KernelSU-Next; do
               [ -d "$cand" ] && KSU_SRC_DIR="$cand"
             done
-            if [ -n "$KSU_SRC_DIR" ] && [ -f "$KSU_SRC_DIR/kernel/selinux/selinux.c" ]; then
-              echo "正在为 $KSU_SRC_DIR 补上 susfs 所需的 fake_state 定义..."
-              wget -q https://github.com/$GITHUB_REPOSITORY/raw/refs/heads/$GITHUB_REF_NAME/other_patch/70_fake_state_for_susfs.patch -O "$KSU_SRC_DIR/70_fake_state_for_susfs.patch"
-              ( cd "$KSU_SRC_DIR" && patch -p1 -N -F 3 < 70_fake_state_for_susfs.patch || true )
-              if grep -q "struct selinux_state fake_state;" "$KSU_SRC_DIR/kernel/selinux/selinux.c"; then
-                echo "fake_state 定义已补上。"
+            KSU_HIDE_SRC="$KSU_SRC_DIR/kernel/feature/selinux_hide.c"
+            if [ -n "$KSU_SRC_DIR" ] && [ -f "$KSU_HIDE_SRC" ]; then
+              if grep -qE '^[[:space:]]*struct[[:space:]]+selinux_state[[:space:]]+fake_state[[:space:]]*;' "$KSU_HIDE_SRC"; then
+                echo "fake_state 定义已存在于 $KSU_HIDE_SRC，跳过。"
               else
-                echo "::warning::未能补上 fake_state 定义，若链接报 undefined symbol: fake_state 请检查此处"
+                echo "正在向 $KSU_HIDE_SRC 追加 susfs 所需的 fake_state 定义..."
+                cat >> "$KSU_HIDE_SRC" <<'KSU_FAKE_STATE_EOF'
+
+/* Added by CI: susfs 的 GKI 补丁在 CONFIG_KSU_SUSFS 下引用 fake_state，
+ * 但其定义只随 10_enable_susfs_for_ksu.patch 提供（仅原版 KSU 应用）。 */
+#ifdef CONFIG_KSU_SUSFS
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
+struct selinux_state fake_state;
+#endif
+#endif
+KSU_FAKE_STATE_EOF
+                if grep -qE '^[[:space:]]*struct[[:space:]]+selinux_state[[:space:]]+fake_state[[:space:]]*;' "$KSU_HIDE_SRC"; then
+                  echo "fake_state 定义已补上。"
+                else
+                  echo "::warning::未能补上 fake_state 定义，若链接报 undefined symbol: fake_state 请检查此处"
+                fi
               fi
             else
-              echo "::warning::未找到 KSU 源码目录或 kernel/selinux/selinux.c，跳过 fake_state 补丁"
+              echo "::warning::未找到 $KSU_SRC_DIR/kernel/feature/selinux_hide.c，跳过 fake_state 补充"
             fi
           fi
           if [[ ${{ github.event.inputs.ksu_type }} == "ksu" ]]; then
