@@ -134,6 +134,29 @@ NEW_CLANG_WARNINGS = (
     "-Wno-error=address-of-packed-member",
 )
 
+# GPU VA48 only needs msm_kgsl.ko plus its real dependencies (synx/ipclite,
+# hw_fence, arm_smmu, qcom_iommu_util). The vendor pineapple_GKI.config fragment
+# also turns on OPlus scheduler features, and the blanket "make modules" that
+# exists only to generate a true vendor Module.symvers then compiles them too.
+# Those modules register scheduler vendor hooks (e.g. android_vh_reweight_entity)
+# whose DECLARE_HOOK lives in the common tree, not the vendor tree, so a newer
+# Clang rejects the implicit declaration and the whole stage fails.
+#
+# Keep them out of this GPU-only build instead of demoting the diagnostic:
+# -Wno-error=implicit-function-declaration would let the compiler guess an
+# int(...) prototype, which can emit a wrong aarch64 call for a tracepoint
+# registration and turn a build error into a boot-time crash. None of these
+# features affect GPU address space, KGSL, or the exported symbols KGSL imports.
+UNRELATED_VENDOR_MODULES = (
+    "CONFIG_OPLUS_FEATURE_SCHED_ASSIST",
+    "CONFIG_OPLUS_FEATURE_FRAME_BOOST",
+    "CONFIG_OPLUS_FEATURE_EAS_OPT",
+    "CONFIG_OPLUS_FEATURE_QOS_SCHED",
+    "CONFIG_OPLUS_FEATURE_CPU_JANKINFO",
+    "CONFIG_OPLUS_FEATURE_TASK_CPUSTATS",
+    "CONFIG_OPLUS_FEATURE_CEILING_FREE",
+)
+
 
 def make_args(kernel, vendor_out, common, release, jobs):
     return ["make", "-C", str(kernel), f"O={vendor_out}", f"KBUILD_MIXED_TREE={common}",
@@ -349,6 +372,8 @@ def build(args, *, runner=subprocess.run, fetcher=fetch_source, refs=None):
             for key in sorted(critical):
                 value = current_cfg.get(key, "n")
                 lines.append(f"# {key} is not set" if value == "n" else f"{key}={value}")
+            # Disable after the vendor fragment is merged with -m so these stay off.
+            lines += [f"# {key} is not set" for key in UNRELATED_VENDOR_MODULES]
             extra.write_text("\n".join(lines) + "\n", encoding="utf-8")
             run_stage("merge-vendor-config", ["bash", str(kernel / "scripts/kconfig/merge_config.sh"), "-m", "-r", "-O", str(vendor_out),
                 str(common / ".config"), str(fragment), str(extra)], output, evidence, env, runner)
