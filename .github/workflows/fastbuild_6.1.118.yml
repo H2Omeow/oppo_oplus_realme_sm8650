@@ -640,13 +640,15 @@ jobs:
             echo "apt 中无可用的 pahole >= 1.31，正在从源码构建 ..."
             sudo apt-get install -y --no-install-recommends cmake libdw-dev libelf-dev zlib1g-dev >/dev/null 2>&1 || true
             rm -rf /tmp/pahole-src
-            if git clone --depth=1 -b v1.31 https://git.kernel.org/pub/scm/devel/pahole/pahole.git /tmp/pahole-src >/dev/null 2>&1 \
-               || git clone --depth=1 -b v1.31 https://github.com/acmel/dwarves.git /tmp/pahole-src >/dev/null 2>&1; then
-              ( cd /tmp/pahole-src && git submodule update --init --recursive >/dev/null 2>&1 || true
-                cmake -D__LIB=lib -DCMAKE_BUILD_TYPE=Release . >/dev/null 2>&1 && make -j"$(nproc)" >/dev/null 2>&1 && sudo make install >/dev/null 2>&1 )
+            if git clone --depth=1 -b v1.31 https://git.kernel.org/pub/scm/devel/pahole/pahole.git /tmp/pahole-src \
+               || git clone --depth=1 -b v1.31 https://github.com/acmel/dwarves.git /tmp/pahole-src; then
+              ( cd /tmp/pahole-src && git submodule update --init --recursive || true
+                cmake -D__LIB=lib -DCMAKE_BUILD_TYPE=Release . && make -j"$(nproc)" && sudo make install ) || echo "pahole 源码构建失败（见上方输出）"
               sudo ldconfig || true
               hash -r || true
               pahole_version=$(pahole --version 2>/dev/null | head -n1)
+            else
+              echo "pahole 源码仓库克隆失败（见上方输出）"
             fi
           fi
           [ -z "$pahole_version" ] && echo "pahole版本：未安装" || echo "pahole版本：$pahole_version"
