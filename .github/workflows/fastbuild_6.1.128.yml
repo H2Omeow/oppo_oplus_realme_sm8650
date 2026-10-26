@@ -355,16 +355,7 @@ jobs:
                 echo "fake_state 定义已存在于 $KSU_HIDE_SRC，跳过。"
               else
                 echo "正在向 $KSU_HIDE_SRC 追加 susfs 所需的 fake_state 定义..."
-                cat >> "$KSU_HIDE_SRC" <<'KSU_FAKE_STATE_EOF'
-
-/* Added by CI: susfs 的 GKI 补丁在 CONFIG_KSU_SUSFS 下引用 fake_state，
- * 但其定义只随 10_enable_susfs_for_ksu.patch 提供（仅原版 KSU 应用）。 */
-#ifdef CONFIG_KSU_SUSFS
-#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)
-struct selinux_state fake_state;
-#endif
-#endif
-KSU_FAKE_STATE_EOF
+                { printf '\n'; printf '/* Added by CI: susfs GKI patch references fake_state under CONFIG_KSU_SUSFS,\n'; printf ' * but its definition only ships with 10_enable_susfs_for_ksu.patch. */\n'; printf '#ifdef CONFIG_KSU_SUSFS\n'; printf '#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 6, 0)\n'; printf 'struct selinux_state fake_state;\n'; printf '#endif\n'; printf '#endif\n'; } >> "$KSU_HIDE_SRC"
                 if grep -qE '^[[:space:]]*struct[[:space:]]+selinux_state[[:space:]]+fake_state[[:space:]]*;' "$KSU_HIDE_SRC"; then
                   echo "fake_state 定义已补上。"
                 else
