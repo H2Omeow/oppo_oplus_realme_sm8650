@@ -43,7 +43,7 @@ def fixed_source(spec):
     return spec
 
 
-def run_stage(label, command, output, evidence, env, runner, allow_failure=False):
+def run_stage(label, command, output, evidence, env, runner):
     print(f"GPU CI: {label}", flush=True)
     log = output / f"{len(evidence['stages']) + 1:02d}-{label}.log"
     stage = {"name": label, "command": command, "log": log.name, "status": "running"}
@@ -57,14 +57,8 @@ def run_stage(label, command, output, evidence, env, runner, allow_failure=False
     if result.returncode:
         print(f"GPU CI: {label} failed; last 80 log lines ({log.name}):", flush=True)
         print("\n".join(text.splitlines()[-80:]), flush=True)
-        if not allow_failure:
-            stage["status"] = "failed"
-            raise strict.BuildError(f"{label} failed with exit code {result.returncode}; see {log.name}")
-        # Tolerated only where the stage's product is checked separately
-        # afterwards (see the vendor-native-modules call site).
-        stage["status"] = "partial"
-        print(f"GPU CI: {label} partial failure tolerated; its output is validated separately", flush=True)
-        return
+        stage["status"] = "failed"
+        raise strict.BuildError(f"{label} failed with exit code {result.returncode}; see {log.name}")
     if re.search(r"(?:warning:.*(?:undefined|missing.*(?:symvers|symbol))|undefined!)", text, re.I):
         stage["status"] = "failed"
         print(f"GPU CI: {label} contains unresolved/missing symbols; last 80 log lines ({log.name}):", flush=True)
@@ -139,6 +133,22 @@ NEW_CLANG_WARNINGS = (
     "-Wno-error=pointer-bool-conversion",
     "-Wno-error=address-of-packed-member",
 )
+
+# pineapple_GKI.config turns on OPlus scheduler modules that have nothing to do
+# with the GPU address space. They call vendor hooks (register_trace_android_vh_*)
+# that the GKI common tree we build against does not declare, so the native
+# modules stage dies before modpost and never writes Module.symvers. Turning the
+# subtree off is what keeps that symbol table reachable; kconfig cascades the
+# "depends on OPLUS_FEATURE_SCHED_ASSIST" options (TASK_SCHED, TASK_LOAD,
+# LOADBALANCE, PIPELINE, SCHED_SPREAD, TICK_GRAN) by itself, and CPU_JANKINFO
+# (sched_info) is listed because it calls sched_assist exports directly.
+# KGSL imports none of these; its only OPlus touchpoint is MM_OSVELTE, which is
+# an independent memory-debug option and stays untouched.
+KGSL_IRRELEVANT_MODULES = (
+    "CONFIG_OPLUS_FEATURE_SCHED_ASSIST",
+    "CONFIG_OPLUS_FEATURE_CPU_JANKINFO",
+)
+
 
 def make_args(kernel, vendor_out, common, release, jobs):
     return ["make", "-C", str(kernel), f"O={vendor_out}", f"KBUILD_MIXED_TREE={common}",
@@ -354,6 +364,8 @@ def build(args, *, runner=subprocess.run, fetcher=fetch_source, refs=None):
             for key in sorted(critical):
                 value = current_cfg.get(key, "n")
                 lines.append(f"# {key} is not set" if value == "n" else f"{key}={value}")
+            # Last fragment wins in merge_config.sh, so this overrides pineapple_GKI.config.
+            lines += [f"# {key} is not set" for key in KGSL_IRRELEVANT_MODULES]
             extra.write_text("\n".join(lines) + "\n", encoding="utf-8")
             run_stage("merge-vendor-config", ["bash", str(kernel / "scripts/kconfig/merge_config.sh"), "-m", "-r", "-O", str(vendor_out),
                 str(common / ".config"), str(fragment), str(extra)], output, evidence, env, runner)
@@ -367,16 +379,18 @@ def build(args, *, runner=subprocess.run, fetcher=fetch_source, refs=None):
             # No M= and no Image target: native mixed build generates dependency
             # closure and Module.symvers from GKI vmlinux.symvers + modules-only.
             # This stage exists only to produce a real vendor Module.symvers; the
-            # GPU modules themselves are built separately below with M=. The
-            # vendor fragment also enables OPlus scheduler/WALT modules that have
-            # nothing to do with GPU address space, and newer Clang rejects some
-            # of their pre-existing issues (missing vendor-hook declarations,
-            # cross-module symbols). Keep going past those so the symbol table is
-            # still generated; msm_kgsl.ko and its real dependencies below stay
-            # strict, and validate_vendor_symbols() still rejects a symbol table
-            # that lacks what KGSL imports.
+            # GPU modules themselves are built separately below with M=.
+            #
+            # This stage is strict. Tolerating its exit code cannot work: -k lets
+            # make continue past a broken target, but the tree-wide modpost that
+            # writes Module.symvers never runs, so a "tolerated" failure only
+            # resurfaces later as an absent Module.symvers and hides the compile
+            # error that caused it. Anything that genuinely does not belong to the
+            # GPU build is excluded in the config fragment above instead. -k and
+            # MODPOST_WARN remain so one broken target still reports every other
+            # error in a single run rather than one per CI attempt.
             run_stage("vendor-native-modules", base_make + ["-k", "KBUILD_MODPOST_WARN=1", "modules"],
-                      output, evidence, env, runner, allow_failure=True)
+                      output, evidence, env, runner)
             validate_vendor_symbols(common, vendor_out)
             shutil.copyfile(vendor_out / ".config", output / "vendor-config.txt")
             vendor_headers = {str(p): strict.sha256(p) for p in
